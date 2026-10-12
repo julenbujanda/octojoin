@@ -136,8 +136,8 @@ func (ws *WebServer) handleSessionsAPI(w http.ResponseWriter, r *http.Request) {
 	var upcomingFreeElectricitySessions []FreeElectricitySession
 	
 	// Filter saving sessions
-	if sessions != nil && sessions.Data.SavingSessions.Account.JoinedEvents != nil {
-		for _, session := range sessions.Data.SavingSessions.Account.JoinedEvents {
+	if sessions != nil {
+		for _, session := range sessions.Data.SavingSessions.Events {
 			if session.EndAt.After(now) {
 				upcomingSavingSessions = append(upcomingSavingSessions, session)
 			}
@@ -809,11 +809,15 @@ func (ws *WebServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     } else {
                         newSavingContent = data.saving_sessions.map(session => {
                             const duration = Math.floor((new Date(session.endAt) - new Date(session.startAt)) / (1000 * 60));
+                            const isHappyHour = session.eventType === 'WEEKEND_HAPPY_HOUR';
+                            const label = isHappyHour ? '🍹 Weekend Happy Hour' : (session.eventType === 'TURN_UP' ? '⬆️ Turn Up' : '⬇️ Saving Session');
+                            const joined = session.joined ? (isHappyHour ? ' | ✅ Booked' : ' | ✅ Joined') : '';
+                            const points = isHappyHour ? '' : ` + "`" + ` | Points: ${session.octopoints}/kWh` + "`" + `;
                             return ` + "`" + `
                                 <div class="session">
                                     <div class="session-date">${formatDate(session.startAt)}</div>
                                     <div class="session-details">
-                                        Duration: ${formatDuration(duration)} | Points: ${session.octoPoints}
+                                        ${label} | Duration: ${formatDuration(duration)}${points}${joined}
                                     </div>
                                     <div class="session-countdown" data-target="${session.startAt}"></div>
                                 </div>

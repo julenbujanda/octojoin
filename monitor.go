@@ -99,13 +99,6 @@ func (m *SavingSessionMonitor) getSmartInterval() time.Duration {
 		return m.checkInterval
 	}
 	
-	// Load UK timezone
-	ukLocation, err := time.LoadLocation("Europe/London")
-	if err != nil {
-		// Fallback to UTC if timezone loading fails
-		ukLocation = time.UTC
-	}
-	
 	now := time.Now().In(ukLocation)
 	hour := now.Hour()
 	weekday := now.Weekday()
@@ -302,7 +295,11 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 		}
 	}
 
-	for _, session := range response.Data.SavingSessions.Account.JoinedEvents {
+	for _, session := range response.Data.SavingSessions.Events {
+		// booked in the Octopus app, not joined
+		if session.IsWeekendHappyHour() {
+			continue
+		}
 		if !m.state.KnownSessions[session.EventID] {
 			foundNewSessions = true
 			now := time.Now()
@@ -316,21 +313,25 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 				if m.daemonMode {
 					m.logger.Info("SAVING SESSION FOUND",
 						"event_id", session.EventID,
-						"date", session.StartAt.Format("Monday, Jan 2"),
-						"time", session.StartAt.Format("15:04"),
+						"event_code", session.Code,
+						"event_type", session.EventType,
+						"date", session.StartAt.In(ukLocation).Format("Monday, Jan 2"),
+						"time", session.StartAt.In(ukLocation).Format("15:04"),
 						"duration", m.formatDuration(duration),
-						"reward_points", session.OctoPoints,
+						"reward_points_per_kwh", session.OctoPoints,
 						"starts_in", m.formatTimeUntil(timeUntil),
 					)
 				} else {
 					m.logger.UserMessage("🎉 SAVING SESSION FOUND")
-					m.logger.UserMessage("   Date: %s at %s", session.StartAt.Format("Monday, Jan 2"), session.StartAt.Format("15:04"))
+					m.logger.UserMessage("   Date: %s at %s", session.StartAt.In(ukLocation).Format("Monday, Jan 2"), session.StartAt.In(ukLocation).Format("15:04"))
 					m.logger.UserMessage("   Duration: %s", m.formatDuration(duration))
-					m.logger.UserMessage("   Reward: %d OctoPoints", session.OctoPoints)
+					m.logger.UserMessage("   Reward: %d OctoPoints per kWh", session.OctoPoints)
 					m.logger.UserMessage("   Starts in %s", m.formatTimeUntil(timeUntil))
 				}
 
-				if m.shouldJoinSession(session) {
+				if session.Joined {
+					m.logger.Info("Already joined session", "event_id", session.EventID)
+				} else if m.shouldJoinSession(session) {
 					if m.daemonMode {
 						m.logger.Info("Attempting to join session",
 							"event_id", session.EventID,
@@ -340,13 +341,14 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 					} else {
 						m.logger.UserMessage("   Joining session (meets threshold of %d points)", m.minPointsThreshold)
 					}
-					if err := m.joinSession(session.EventID); err != nil {
+					if err := m.joinSession(session.Code); err != nil {
 						m.logger.Error("Failed to join session",
 							"event_id", session.EventID,
 							"error", err.Error(),
 						)
 					} else {
 						m.logger.Info("Successfully joined session", "event_id", session.EventID)
+						m.state.CachedSavingSessions = nil
 					}
 				} else {
 					m.logger.Info("Skipped session - insufficient points",
@@ -365,10 +367,10 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 		}
 	}
 
-	if len(response.Data.SavingSessions.Account.JoinedEvents) == 0 {
-		m.logger.Debug("No saving sessions found")
+	if len(response.Data.SavingSessions.Events) == 0 {
+		m.logger.Debug("No upcoming saving sessions found")
 	}
-	
+
 	return foundNewSessions
 }
 
@@ -420,13 +422,13 @@ func (m *SavingSessionMonitor) checkFreeElectricitySessions() bool {
 			if m.daemonMode {
 				m.logger.Info("FREE ELECTRICITY SESSION ACTIVE NOW",
 					"time_remaining", m.formatTimeUntil(timeLeft),
-					"ends_at", session.EndAt.Format("15:04"),
+					"ends_at", session.EndAt.In(ukLocation).Format("15:04"),
 				)
 			} else {
 				m.logger.UserMessage("⚡ FREE ELECTRICITY SESSION ACTIVE NOW!")
 				m.logger.UserMessage("   Your electricity is currently FREE")
 				m.logger.UserMessage("   Time remaining: %s", m.formatTimeUntil(timeLeft))
-				m.logger.UserMessage("   Ends at %s", session.EndAt.Format("15:04"))
+				m.logger.UserMessage("   Ends at %s", session.EndAt.In(ukLocation).Format("15:04"))
 			}
 		} else {
 			// Upcoming session
@@ -439,14 +441,14 @@ func (m *SavingSessionMonitor) checkFreeElectricitySessions() bool {
 			if m.daemonMode {
 				m.logger.Info("FREE ELECTRICITY SESSION FOUND",
 					"alert_type", alertType,
-					"date", session.StartAt.Format("Monday, Jan 2"),
-					"time", session.StartAt.Format("15:04"),
+					"date", session.StartAt.In(ukLocation).Format("Monday, Jan 2"),
+					"time", session.StartAt.In(ukLocation).Format("15:04"),
 					"duration", m.formatDuration(duration),
 					"starts_in", startsIn,
 				)
 			} else {
 				m.logger.UserMessage("🔋 FREE ELECTRICITY SESSION - %s", alertType)
-				m.logger.UserMessage("   Date: %s at %s", session.StartAt.Format("Monday, Jan 2"), session.StartAt.Format("15:04"))
+				m.logger.UserMessage("   Date: %s at %s", session.StartAt.In(ukLocation).Format("Monday, Jan 2"), session.StartAt.In(ukLocation).Format("15:04"))
 				m.logger.UserMessage("   Duration: %s", m.formatDuration(duration))
 				m.logger.UserMessage("   Starts in %s", startsIn)
 				m.logger.UserMessage("   No action needed - automatically free!")
@@ -538,8 +540,8 @@ func (m *SavingSessionMonitor) shouldJoinSession(session SavingSession) bool {
 	return session.OctoPoints >= m.minPointsThreshold
 }
 
-func (m *SavingSessionMonitor) joinSession(eventID int) error {
-	return m.client.JoinSavingSession(eventID)
+func (m *SavingSessionMonitor) joinSession(eventCode string) error {
+	return m.client.JoinSavingSession(eventCode)
 }
 
 func (m *SavingSessionMonitor) formatDuration(d time.Duration) string {

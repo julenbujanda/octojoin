@@ -155,6 +155,7 @@ func main() {
 			fmt.Printf("✅ Saving Sessions API accessible")
 			fmt.Printf("   Current OctoPoints: %d", sessions.Data.OctoPoints.Account.CurrentPointsInWallet)
 			fmt.Printf("   Joined sessions: %d", len(sessions.Data.SavingSessions.Account.JoinedEvents))
+			fmt.Printf("   Upcoming events: %d", len(sessions.Data.SavingSessions.Events))
 			fmt.Printf("   Campaign enrolled: %t", sessions.Data.SavingSessions.Account.HasJoinedCampaign)
 			
 			if !sessions.Data.SavingSessions.Account.HasJoinedCampaign {

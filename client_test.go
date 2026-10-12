@@ -166,3 +166,15 @@ func TestWheelOfFortuneSpins(t *testing.T) {
 		t.Errorf("Expected 2 gas spins, got %d", spins.GasSpins)
 	}
 }
+
+func TestUKLocationDisplay(t *testing.T) {
+	// API times are UTC; sessions should display in UK local time
+	summer := time.Date(2026, 10, 12, 17, 0, 0, 0, time.UTC) // BST (UTC+1)
+	if got := summer.In(ukLocation).Format("15:04"); got != "18:00" {
+		t.Errorf("expected BST time 18:00, got %s", got)
+	}
+	winter := time.Date(2026, 12, 1, 17, 0, 0, 0, time.UTC) // GMT (UTC+0)
+	if got := winter.In(ukLocation).Format("15:04"); got != "17:00" {
+		t.Errorf("expected GMT time 17:00, got %s", got)
+	}
+}

@@ -14,7 +14,20 @@
 
 package main
 
-import "time"
+import (
+	"time"
+	_ "time/tzdata" // so Europe/London works without system zoneinfo
+)
+
+var ukLocation = loadUKLocation()
+
+func loadUKLocation() *time.Location {
+	loc, err := time.LoadLocation("Europe/London")
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}
 
 // Cache durations - tuned based on real-world Octopus Energy API update patterns
 const (
