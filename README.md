@@ -6,6 +6,7 @@ A Go application that monitors Octopus Energy (UK) saving sessions and free elec
 
 - **Saving Sessions**: Automatically joins sessions that earn OctoPoints for reducing energy usage
 - **Free Electricity**: Monitors and alerts for periods of completely free electricity
+- **Weekend Happy Hours**: Detects newly published Weekend Happy Hour slots and sends push notifications via [ntfy](https://ntfy.sh) 🍹
 - **Wheel of Fortune**: Automatically spins available wheels and collects OctoPoints 🎰
 - **Smart Meter Graphs**: Interactive usage visualization with Chart.js integration 📊
 - **Real-time Dashboard**: Live web interface with countdown timers and session status
@@ -52,6 +53,7 @@ cp config.example.yaml config.yaml
 | `-min-points` | Minimum points to join session | 0 (join all) |
 | `-debug` | Enable debug logging | false |
 | `-no-smart-intervals` | Disable smart interval adjustment | false |
+| `-ntfy-url` | ntfy topic URL for Weekend Happy Hour notifications | `NTFY_URL` env var |
 | `-test` | Run compatibility test and exit | false |
 
 ### Configuration File (config.yaml)
@@ -64,7 +66,12 @@ web_port: 8080
 min_points: 100
 debug: false
 no_smart_intervals: false
+ntfy_url: "https://ntfy.sh/my-octojoin-topic"  # optional
+ntfy_token: ""                                # optional, or NTFY_TOKEN env var
 ```
+
+### Weekend Happy Hour Notifications
+Octopus publishes Weekend Happy Hours as a set of hourly slots, and you book one of them in the Octopus app. OctoJoin doesn't book a slot for you. When new slots appear, it sends one ntfy notification per day listing them, marking the slot you've already booked and any that are full or nearly full. Set `ntfy_url` to any ntfy topic URL, on ntfy.sh or a self-hosted server. Set `ntfy_token` if the topic requires an access token.
 
 ### Getting Your Credentials
 1. **Account ID**: Found in your Octopus Energy dashboard

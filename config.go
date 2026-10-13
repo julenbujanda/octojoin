@@ -32,6 +32,8 @@ type Config struct {
 	WebPort          int    `yaml:"web_port"`
 	Debug            bool   `yaml:"debug"`
 	NoSmartIntervals bool   `yaml:"no_smart_intervals"`
+	NtfyURL          string `yaml:"ntfy_url"`
+	NtfyToken        string `yaml:"ntfy_token"`
 }
 
 func LoadConfig(configPath string) (*Config, error) {
@@ -117,6 +119,11 @@ func (c *Config) Validate() error {
 	}
 	if c.MinPoints > 10000 {
 		errors = append(errors, fmt.Sprintf("warning: min points threshold very high (%d), you may miss most sessions", c.MinPoints))
+	}
+
+	// Validate ntfy endpoint
+	if c.NtfyURL != "" && !strings.HasPrefix(c.NtfyURL, "https://") && !strings.HasPrefix(c.NtfyURL, "http://") {
+		errors = append(errors, fmt.Sprintf("ntfy URL must start with http:// or https://, got: %s", c.NtfyURL))
 	}
 
 	// Logical validations

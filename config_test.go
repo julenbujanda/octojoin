@@ -17,6 +17,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -214,5 +215,21 @@ func TestConfigApplyDefaults(t *testing.T) {
 
 	if config2.WebPort != 3000 {
 		t.Errorf("Expected WebPort to remain 3000, got %d", config2.WebPort)
+	}
+}
+
+func TestValidateNtfyURL(t *testing.T) {
+	base := Config{AccountID: "A-1234ABCD", APIKey: "sk_live_test-key-for-validation", WebPort: 8080, CheckInterval: 10}
+
+	valid := base
+	valid.NtfyURL = "https://ntfy.sh/my-topic"
+	if err := valid.Validate(); err != nil {
+		t.Errorf("expected valid ntfy URL to pass, got %v", err)
+	}
+
+	invalid := base
+	invalid.NtfyURL = "ntfy.sh/my-topic"
+	if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), "ntfy URL") {
+		t.Errorf("expected ntfy URL validation error, got %v", err)
 	}
 }

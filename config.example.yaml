@@ -52,6 +52,18 @@ web_ui: true
 # Change this if port 8080 is already in use
 web_port: 8080
 
+# ========================
+# Notifications (ntfy)
+# ========================
+
+# ntfy topic URL for Weekend Happy Hour notifications
+# Works with https://ntfy.sh or a self-hosted ntfy server. Leave empty to disable.
+# Can also be set with -ntfy-url or the NTFY_URL environment variable.
+ntfy_url: ""
+
+# Optional access token for protected ntfy topics (or NTFY_TOKEN env var)
+ntfy_token: ""
+
 # ==================
 # Debugging Options
 # ==================

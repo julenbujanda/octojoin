@@ -17,6 +17,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -42,6 +44,7 @@ type SavingSessionMonitor struct {
 	lastNewSessionTime   time.Time
 	logger               *Logger
 	daemonMode           bool // true if running with web UI
+	notifier             *NtfyNotifier
 }
 
 func NewSavingSessionMonitor(client *OctopusClient, accountID string) *SavingSessionMonitor {
@@ -86,6 +89,11 @@ func (m *SavingSessionMonitor) SetCheckInterval(interval time.Duration) {
 
 func (m *SavingSessionMonitor) SetSmartIntervals(enabled bool) {
 	m.useSmartIntervals = enabled
+}
+
+// SetNotifier enables ntfy push notifications
+func (m *SavingSessionMonitor) SetNotifier(notifier *NtfyNotifier) {
+	m.notifier = notifier
 }
 
 // SetDaemonMode sets whether the monitor is running in daemon mode with web UI
@@ -295,9 +303,10 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 		}
 	}
 
+	var happyHours []SavingSession
 	for _, session := range response.Data.SavingSessions.Events {
-		// booked in the Octopus app, not joined
 		if session.IsWeekendHappyHour() {
+			happyHours = append(happyHours, session)
 			continue
 		}
 		if !m.state.KnownSessions[session.EventID] {
@@ -367,11 +376,114 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 		}
 	}
 
+	if m.checkWeekendHappyHours(happyHours) {
+		foundNewSessions = true
+	}
+
 	if len(response.Data.SavingSessions.Events) == 0 {
 		m.logger.Debug("No upcoming saving sessions found")
 	}
 
 	return foundNewSessions
+}
+
+// checkWeekendHappyHours sends one notification per day when new Weekend Happy Hour slots appear.
+// Slots are booked in the Octopus app, so they aren't joined like other sessions.
+func (m *SavingSessionMonitor) checkWeekendHappyHours(happyHours []SavingSession) bool {
+	// Group slots by UK day, noting days with slots we haven't seen
+	slotsByDay := make(map[string][]SavingSession)
+	newDays := make(map[string]bool)
+	for _, slot := range happyHours {
+		day := slot.StartAt.In(ukLocation).Format("2006-01-02")
+		slotsByDay[day] = append(slotsByDay[day], slot)
+		if !m.state.KnownSessions[slot.EventID] {
+			newDays[day] = true
+		}
+	}
+
+	days := make([]string, 0, len(newDays))
+	for day := range newDays {
+		days = append(days, day)
+	}
+	sort.Strings(days)
+
+	for _, day := range days {
+		slots := slotsByDay[day]
+		sort.Slice(slots, func(i, j int) bool { return slots[i].StartAt.Before(slots[j].StartAt) })
+
+		dayLabel := slots[0].StartAt.In(ukLocation).Format("Monday, Jan 2")
+		lines := make([]string, 0, len(slots))
+		booked := false
+		for _, slot := range slots {
+			line := formatSlot(slot.StartAt, slot.EndAt)
+			if slot.Joined {
+				line += " (booked)"
+				booked = true
+			} else if slot.CapacityStatus == "FULL" {
+				line += " (full)"
+			} else if slot.CapacityStatus == "LOW" {
+				line += " (few spaces left)"
+			}
+			lines = append(lines, line)
+		}
+
+		if m.daemonMode {
+			m.logger.Info("WEEKEND HAPPY HOUR FOUND",
+				"date", dayLabel,
+				"slots", strings.Join(lines, ", "),
+				"booked", booked,
+			)
+		} else {
+			m.logger.UserMessage("🍹 WEEKEND HAPPY HOUR FOUND")
+			m.logger.UserMessage("   Date: %s", dayLabel)
+			for _, line := range lines {
+				m.logger.UserMessage("   %s", line)
+			}
+			if !booked {
+				m.logger.UserMessage("   Book a slot in the Octopus app")
+			}
+		}
+
+		if m.notifier != nil {
+			message := "Slots:\n" + strings.Join(lines, "\n")
+			if !booked {
+				message += "\n\nBook your slot in the Octopus app."
+			}
+			err := m.notify(NtfyMessage{
+				Title:   fmt.Sprintf("Weekend Happy Hour: %s", dayLabel),
+				Message: message,
+				Tags:    []string{"tropical_drink", "zap"},
+			})
+			if err != nil {
+				// retry on the next check
+				continue
+			}
+		}
+
+		for _, slot := range slots {
+			m.state.KnownSessions[slot.EventID] = true
+		}
+	}
+
+	return len(days) > 0
+}
+
+// notify sends msg to ntfy, if it's set up
+func (m *SavingSessionMonitor) notify(msg NtfyMessage) error {
+	if m.notifier == nil {
+		return nil
+	}
+	if err := m.notifier.Send(msg); err != nil {
+		m.logger.Error("Failed to send notification", "title", msg.Title, "error", err.Error())
+		return err
+	}
+	m.logger.Debug("Sent notification", "title", msg.Title)
+	return nil
+}
+
+// formatSlot formats a time range in UK time, e.g. 11:00-12:00
+func formatSlot(start, end time.Time) string {
+	return start.In(ukLocation).Format("15:04") + "-" + end.In(ukLocation).Format("15:04")
 }
 
 func (m *SavingSessionMonitor) checkFreeElectricitySessions() bool {

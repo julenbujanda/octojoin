@@ -33,7 +33,7 @@ func min(a, b int) int {
 }
 
 func main() {
-	var accountID, apiKey, configPath string
+	var accountID, apiKey, configPath, ntfyURL string
 	var daemon, webUI, debug, showVersion, noSmartIntervals, runTest bool
 	var minPoints, webPort int
 	
@@ -47,6 +47,7 @@ func main() {
 	flag.IntVar(&minPoints, "min-points", 0, "Minimum points threshold to join a session (0 = join all sessions)")
 	flag.IntVar(&webPort, "port", 8080, "Web UI port (default: 8080)")
 	flag.BoolVar(&noSmartIntervals, "no-smart-intervals", false, "Disable smart interval adjustment (use fixed intervals)")
+	flag.StringVar(&ntfyURL, "ntfy-url", os.Getenv("NTFY_URL"), "ntfy topic URL for Weekend Happy Hour notifications")
 	flag.BoolVar(&runTest, "test", false, "Run compatibility test to verify OctoJoin requirements and exit")
 	flag.Parse()
 
@@ -87,6 +88,14 @@ func main() {
 		webPort = config.WebPort
 	}
 
+	if ntfyURL == "" && config.NtfyURL != "" {
+		ntfyURL = config.NtfyURL
+	}
+	ntfyToken := os.Getenv("NTFY_TOKEN")
+	if ntfyToken == "" {
+		ntfyToken = config.NtfyToken
+	}
+
 	// Update config with final values for validation
 	config.AccountID = accountID
 	config.APIKey = apiKey
@@ -94,6 +103,7 @@ func main() {
 	config.WebUI = webUI
 	config.WebPort = webPort
 	config.MinPoints = minPoints
+	config.NtfyURL = ntfyURL
 
 	// Validate configuration
 	if err := config.Validate(); err != nil {
@@ -286,6 +296,11 @@ func main() {
 		logger.Info("Web UI enabled", "url", fmt.Sprintf("http://localhost:%d", webPort))
 	} else if webUI && !daemon {
 		logger.Warn("Web UI can only be enabled in daemon mode")
+	}
+
+	if ntfyURL != "" {
+		monitor.SetNotifier(NewNtfyNotifier(ntfyURL, ntfyToken))
+		logger.Info("ntfy notifications enabled for Weekend Happy Hours")
 	}
 
 	if minPoints > 0 {
