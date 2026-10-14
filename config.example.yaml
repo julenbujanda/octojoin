@@ -61,8 +61,12 @@ web_port: 8080
 happy_hours_per_day: 1
 
 # Preferred slot start times (24-hour, UK time), most preferred first.
-# Leave empty to book the earliest slot with space. Can also be set with -happy-hour-times.
+# Leave empty to use happy_hour_slot below. Can also be set with -happy-hour-times.
 happy_hour_times: []
+
+# Slot to book when no preferred time has space: "latest" (default) or "earliest"
+# Can also be set with -happy-hour-slot.
+happy_hour_slot: "latest"
 
 # ========================
 # Notifications (ntfy)

@@ -37,6 +37,7 @@ type Config struct {
 	NtfyToken        string `yaml:"ntfy_token"`
 	HappyHoursPerDay int      `yaml:"happy_hours_per_day"`
 	HappyHourTimes   []string `yaml:"happy_hour_times"`
+	HappyHourSlot    string   `yaml:"happy_hour_slot"`
 }
 
 func LoadConfig(configPath string) (*Config, error) {
@@ -48,6 +49,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		WebPort:       8080,
 		Debug:         false,
 		HappyHoursPerDay: 1,
+		HappyHourSlot:    HappyHourSlotLatest,
 	}
 
 	if configPath == "" {
@@ -76,6 +78,9 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.WebPort <= 0 {
 		c.WebPort = 8080
+	}
+	if c.HappyHourSlot == "" {
+		c.HappyHourSlot = HappyHourSlotLatest
 	}
 }
 
@@ -133,6 +138,9 @@ func (c *Config) Validate() error {
 	// Octopus allows up to two Happy Hours per day
 	if c.HappyHoursPerDay < 0 || c.HappyHoursPerDay > 2 {
 		errors = append(errors, fmt.Sprintf("happy hours per day must be between 0 and 2, got: %d", c.HappyHoursPerDay))
+	}
+	if c.HappyHourSlot != "" && c.HappyHourSlot != HappyHourSlotLatest && c.HappyHourSlot != HappyHourSlotEarliest {
+		errors = append(errors, fmt.Sprintf("happy hour slot must be %q or %q, got: %q", HappyHourSlotLatest, HappyHourSlotEarliest, c.HappyHourSlot))
 	}
 	for _, t := range c.HappyHourTimes {
 		if _, err := time.Parse("15:04", t); err != nil {

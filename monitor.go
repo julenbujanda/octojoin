@@ -47,6 +47,7 @@ type SavingSessionMonitor struct {
 	notifier             *NtfyNotifier
 	happyHoursPerDay     int                          // 0 = notify only
 	happyHourTimes       []string                     // UK start times, most preferred first
+	happyHourSlot        string                       // latest or earliest
 	bookHappyHour        func(eventCode string) error
 }
 
@@ -80,6 +81,7 @@ func NewSavingSessionMonitor(client *OctopusClient, accountID string) *SavingSes
 		logger:             logger,
 		daemonMode:         false, // default to standalone mode
 		happyHoursPerDay:   1,
+		happyHourSlot:      HappyHourSlotLatest,
 		bookHappyHour:      client.BookWeekendHappyHour,
 	}
 }
@@ -102,9 +104,10 @@ func (m *SavingSessionMonitor) SetNotifier(notifier *NtfyNotifier) {
 }
 
 // SetHappyHourBooking configures Weekend Happy Hour booking (perDay 0 turns it off)
-func (m *SavingSessionMonitor) SetHappyHourBooking(perDay int, preferredTimes []string) {
+func (m *SavingSessionMonitor) SetHappyHourBooking(perDay int, preferredTimes []string, slot string) {
 	m.happyHoursPerDay = perDay
 	m.happyHourTimes = preferredTimes
+	m.happyHourSlot = slot
 }
 
 // SetDaemonMode sets whether the monitor is running in daemon mode with web UI
@@ -572,6 +575,11 @@ func (m *SavingSessionMonitor) happyHourCandidates(slots []SavingSession) []int 
 			continue
 		}
 		candidates = append(candidates, i)
+	}
+	if m.happyHourSlot != HappyHourSlotEarliest {
+		for a, b := 0, len(candidates)-1; a < b; a, b = a+1, b-1 {
+			candidates[a], candidates[b] = candidates[b], candidates[a]
+		}
 	}
 	sort.SliceStable(candidates, func(a, b int) bool {
 		return rank(slots[candidates[a]]) < rank(slots[candidates[b]])

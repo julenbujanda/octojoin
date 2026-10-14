@@ -63,6 +63,7 @@ func newTestMonitor(notifier *NtfyNotifier) *SavingSessionMonitor {
 		daemonMode:       true,
 		notifier:         notifier,
 		happyHoursPerDay: 1,
+		happyHourSlot:    HappyHourSlotLatest,
 		bookHappyHour:    func(string) error { return nil },
 	}
 }
@@ -149,7 +150,7 @@ func TestCheckWeekendHappyHoursRetriesFailedNotification(t *testing.T) {
 	}
 }
 
-func TestCheckWeekendHappyHoursBooksEarliestSlot(t *testing.T) {
+func TestCheckWeekendHappyHoursBooksLatestSlot(t *testing.T) {
 	var messages []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -164,11 +165,11 @@ func TestCheckWeekendHappyHoursBooksEarliestSlot(t *testing.T) {
 		return nil
 	}
 	slots := happyHourSlots(upcomingDay(), 100, -1)
-	slots[0].CapacityStatus = "FULL"
+	slots[3].CapacityStatus = "FULL"
 
 	m.checkWeekendHappyHours(slots, 3)
-	if len(booked) != 1 || booked[0] != "EVENT_101" {
-		t.Fatalf("expected the earliest slot with space to be booked, got %v", booked)
+	if len(booked) != 1 || booked[0] != "EVENT_102" {
+		t.Fatalf("expected the latest slot with space to be booked, got %v", booked)
 	}
 	if len(messages) != 1 || !strings.Contains(messages[0], "booked") || !strings.Contains(messages[0], "Happy Hours left: 2") {
 		t.Errorf("expected a booking notification, got %v", messages)
@@ -195,13 +196,13 @@ func TestCheckWeekendHappyHoursBookingLimits(t *testing.T) {
 		booked = append(booked, code)
 		return nil
 	}
-	// Prefer the last slot, then the second (which fails to book)
-	m.SetHappyHourBooking(2, []string{ukTime(3), ukTime(1)})
+	// Prefer the second slot (which fails to book), then the third
+	m.SetHappyHourBooking(2, []string{ukTime(1), ukTime(2)}, HappyHourSlotLatest)
 
-	// Saturday gets the preferred slot, then the earliest one left.
+	// Saturday gets the third slot, then the latest one left.
 	// Sunday already has one booked, so its last Happy Hour goes on a preferred slot.
 	m.checkWeekendHappyHours(slots, 3)
-	want := []string{"EVENT_103", "EVENT_100", "EVENT_203"}
+	want := []string{"EVENT_102", "EVENT_103", "EVENT_201"}
 	if strings.Join(booked, ",") != strings.Join(want, ",") {
 		t.Errorf("expected bookings %v, got %v", want, booked)
 	}
@@ -215,8 +216,25 @@ func TestCheckWeekendHappyHoursNoTokens(t *testing.T) {
 	}
 	m.checkWeekendHappyHours(happyHourSlots(upcomingDay(), 100, -1), 0)
 
-	m.SetHappyHourBooking(0, nil)
+	m.SetHappyHourBooking(0, nil, HappyHourSlotLatest)
 	m.checkWeekendHappyHours(happyHourSlots(upcomingDay().AddDate(0, 0, 1), 200, -1), 5)
+}
+
+func TestCheckWeekendHappyHoursBooksEarliestSlot(t *testing.T) {
+	m := newTestMonitor(nil)
+	var booked []string
+	m.bookHappyHour = func(code string) error {
+		booked = append(booked, code)
+		return nil
+	}
+	m.SetHappyHourBooking(1, nil, HappyHourSlotEarliest)
+	slots := happyHourSlots(upcomingDay(), 100, -1)
+	slots[0].CapacityStatus = "FULL"
+
+	m.checkWeekendHappyHours(slots, 1)
+	if len(booked) != 1 || booked[0] != "EVENT_101" {
+		t.Errorf("expected the earliest slot with space to be booked, got %v", booked)
+	}
 }
 
 func TestNotifyWithoutNotifier(t *testing.T) {

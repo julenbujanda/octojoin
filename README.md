@@ -54,7 +54,8 @@ cp config.example.yaml config.yaml
 | `-debug` | Enable debug logging | false |
 | `-no-smart-intervals` | Disable smart interval adjustment | false |
 | `-happy-hours-per-day` | Weekend Happy Hour slots to book per day (0-2, 0 = notify only) | 1 |
-| `-happy-hour-times` | Preferred Weekend Happy Hour start times, UK time (e.g. `11:00,12:00`) | earliest available |
+| `-happy-hour-times` | Preferred Weekend Happy Hour start times, UK time (e.g. `11:00,12:00`) | - |
+| `-happy-hour-slot` | Slot to book when no preferred time has space: `latest` or `earliest` | latest |
 | `-ntfy-url` | ntfy topic URL for Weekend Happy Hour notifications | `NTFY_URL` env var |
 | `-test` | Run compatibility test and exit | false |
 
@@ -70,12 +71,13 @@ debug: false
 no_smart_intervals: false
 happy_hours_per_day: 1                        # 0-2, 0 = notify only
 happy_hour_times: ["11:00", "12:00"]          # optional, preferred start times (UK)
+happy_hour_slot: "latest"                     # or "earliest", used when no preferred time has space
 ntfy_url: "https://ntfy.sh/my-octojoin-topic"  # optional
 ntfy_token: ""                                # optional, or NTFY_TOKEN env var
 ```
 
 ### Weekend Happy Hours
-Octopus publishes Weekend Happy Hours as a set of hourly slots, and each booking spends one of the Happy Hours you've earned from saving sessions. OctoJoin books slots for you while you have Happy Hours left: `happy_hours_per_day` slots per day (default 1, Octopus allows up to 2). It picks the first of your `happy_hour_times` that still has space, or the earliest available slot if you don't set any, and skips slots that are full or start within 5 minutes. Slots you book yourself count towards the daily limit. If you cancel a slot OctoJoin booked, it won't rebook that day. Set `happy_hours_per_day: 0` to only get notifications.
+Octopus publishes Weekend Happy Hours as a set of hourly slots, and each booking spends one of the Happy Hours you've earned from saving sessions. OctoJoin books slots for you while you have Happy Hours left: `happy_hours_per_day` slots per day (default 1, Octopus allows up to 2). It picks the first of your `happy_hour_times` that still has space. Otherwise it books the latest available slot, or the earliest if you set `happy_hour_slot: earliest`. It skips slots that are full or start within 5 minutes. Slots you book yourself count towards the daily limit. If you cancel a slot OctoJoin booked, it won't rebook that day. Set `happy_hours_per_day: 0` to only get notifications.
 
 Notifications are sent via ntfy: one per day when new slots appear, listing them and marking the booked slot and any that are full or nearly full, and one whenever OctoJoin books a slot. Set `ntfy_url` to any ntfy topic URL, on ntfy.sh or a self-hosted server. Set `ntfy_token` if the topic requires an access token.
 

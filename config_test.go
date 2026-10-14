@@ -249,6 +249,12 @@ func TestValidateHappyHourBooking(t *testing.T) {
 		t.Errorf("expected per-day validation error, got %v", err)
 	}
 
+	badSlot := base
+	badSlot.HappyHourSlot = "middle"
+	if err := badSlot.Validate(); err == nil || !strings.Contains(err.Error(), "happy hour slot") {
+		t.Errorf("expected slot validation error, got %v", err)
+	}
+
 	badTime := base
 	badTime.HappyHourTimes = []string{"11am"}
 	if err := badTime.Validate(); err == nil || !strings.Contains(err.Error(), "happy hour time") {

@@ -29,6 +29,12 @@ func loadUKLocation() *time.Location {
 	return loc
 }
 
+// Weekend Happy Hour slot to book when no preferred time is free
+const (
+	HappyHourSlotLatest   = "latest"
+	HappyHourSlotEarliest = "earliest"
+)
+
 // Cache durations - tuned based on real-world Octopus Energy API update patterns
 const (
 	// CacheDurationMeterDevices - Smart meter device list rarely changes

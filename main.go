@@ -37,7 +37,7 @@ func main() {
 	var accountID, apiKey, configPath, ntfyURL string
 	var daemon, webUI, debug, showVersion, noSmartIntervals, runTest bool
 	var minPoints, webPort, happyHoursPerDay int
-	var happyHourTimes string
+	var happyHourTimes, happyHourSlot string
 	
 	flag.StringVar(&configPath, "config", "", "Path to configuration file")
 	flag.BoolVar(&showVersion, "version", false, "Show version information")
@@ -52,6 +52,7 @@ func main() {
 	flag.StringVar(&ntfyURL, "ntfy-url", os.Getenv("NTFY_URL"), "ntfy topic URL for Weekend Happy Hour notifications")
 	flag.IntVar(&happyHoursPerDay, "happy-hours-per-day", 1, "Weekend Happy Hour slots to book per day, 0-2 (0 = notify only)")
 	flag.StringVar(&happyHourTimes, "happy-hour-times", "", "Comma-separated preferred Weekend Happy Hour start times, UK time (e.g. 11:00,12:00)")
+	flag.StringVar(&happyHourSlot, "happy-hour-slot", "", "Weekend Happy Hour slot to book when no preferred time has space: latest or earliest (default latest)")
 	flag.BoolVar(&runTest, "test", false, "Run compatibility test to verify OctoJoin requirements and exit")
 	flag.Parse()
 
@@ -105,6 +106,9 @@ func main() {
 				config.HappyHourTimes = append(config.HappyHourTimes, t)
 			}
 		}
+	}
+	if happyHourSlot != "" {
+		config.HappyHourSlot = happyHourSlot
 	}
 	ntfyToken := os.Getenv("NTFY_TOKEN")
 	if ntfyToken == "" {
@@ -315,9 +319,9 @@ func main() {
 		logger.Warn("Web UI can only be enabled in daemon mode")
 	}
 
-	monitor.SetHappyHourBooking(happyHoursPerDay, config.HappyHourTimes)
+	monitor.SetHappyHourBooking(happyHoursPerDay, config.HappyHourTimes, config.HappyHourSlot)
 	if happyHoursPerDay > 0 {
-		logger.Info("Weekend Happy Hour booking enabled", "per_day", happyHoursPerDay, "preferred_times", strings.Join(config.HappyHourTimes, ","))
+		logger.Info("Weekend Happy Hour booking enabled", "per_day", happyHoursPerDay, "preferred_times", strings.Join(config.HappyHourTimes, ","), "slot", config.HappyHourSlot)
 	}
 
 	if ntfyURL != "" {
