@@ -233,3 +233,25 @@ func TestValidateNtfyURL(t *testing.T) {
 		t.Errorf("expected ntfy URL validation error, got %v", err)
 	}
 }
+
+func TestValidateHappyHourBooking(t *testing.T) {
+	base := Config{AccountID: "A-1234ABCD", APIKey: "sk_live_test-key-for-validation", WebPort: 8080, CheckInterval: 10, HappyHoursPerDay: 1}
+
+	valid := base
+	valid.HappyHourTimes = []string{"11:00", "13:00"}
+	if err := valid.Validate(); err != nil {
+		t.Errorf("expected valid happy hour settings to pass, got %v", err)
+	}
+
+	tooMany := base
+	tooMany.HappyHoursPerDay = 3
+	if err := tooMany.Validate(); err == nil || !strings.Contains(err.Error(), "happy hours per day") {
+		t.Errorf("expected per-day validation error, got %v", err)
+	}
+
+	badTime := base
+	badTime.HappyHourTimes = []string{"11am"}
+	if err := badTime.Validate(); err == nil || !strings.Contains(err.Error(), "happy hour time") {
+		t.Errorf("expected time validation error, got %v", err)
+	}
+}

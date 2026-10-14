@@ -52,11 +52,23 @@ web_ui: true
 # Change this if port 8080 is already in use
 web_port: 8080
 
+# ====================
+# Weekend Happy Hours
+# ====================
+
+# Weekend Happy Hour slots to book per day with the Happy Hours you've earned (0-2)
+# Set to 0 to only get notifications. Can also be set with -happy-hours-per-day.
+happy_hours_per_day: 1
+
+# Preferred slot start times (24-hour, UK time), most preferred first.
+# Leave empty to book the earliest slot with space. Can also be set with -happy-hour-times.
+happy_hour_times: []
+
 # ========================
 # Notifications (ntfy)
 # ========================
 
-# ntfy topic URL for Weekend Happy Hour notifications
+# ntfy topic URL for Weekend Happy Hour notifications (new slots and bookings)
 # Works with https://ntfy.sh or a self-hosted ntfy server. Leave empty to disable.
 # Can also be set with -ntfy-url or the NTFY_URL environment variable.
 ntfy_url: ""

@@ -45,6 +45,9 @@ type SavingSessionMonitor struct {
 	logger               *Logger
 	daemonMode           bool // true if running with web UI
 	notifier             *NtfyNotifier
+	happyHoursPerDay     int                          // 0 = notify only
+	happyHourTimes       []string                     // UK start times, most preferred first
+	bookHappyHour        func(eventCode string) error
 }
 
 func NewSavingSessionMonitor(client *OctopusClient, accountID string) *SavingSessionMonitor {
@@ -76,6 +79,8 @@ func NewSavingSessionMonitor(client *OctopusClient, accountID string) *SavingSes
 		useSmartIntervals:  true,
 		logger:             logger,
 		daemonMode:         false, // default to standalone mode
+		happyHoursPerDay:   1,
+		bookHappyHour:      client.BookWeekendHappyHour,
 	}
 }
 
@@ -94,6 +99,12 @@ func (m *SavingSessionMonitor) SetSmartIntervals(enabled bool) {
 // SetNotifier enables ntfy push notifications
 func (m *SavingSessionMonitor) SetNotifier(notifier *NtfyNotifier) {
 	m.notifier = notifier
+}
+
+// SetHappyHourBooking configures Weekend Happy Hour booking (perDay 0 turns it off)
+func (m *SavingSessionMonitor) SetHappyHourBooking(perDay int, preferredTimes []string) {
+	m.happyHoursPerDay = perDay
+	m.happyHourTimes = preferredTimes
 }
 
 // SetDaemonMode sets whether the monitor is running in daemon mode with web UI
@@ -376,7 +387,7 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 		}
 	}
 
-	if m.checkWeekendHappyHours(happyHours) {
+	if m.checkWeekendHappyHours(happyHours, response.Data.SavingSessions.Account.TokenBalance) {
 		foundNewSessions = true
 	}
 
@@ -387,9 +398,12 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 	return foundNewSessions
 }
 
-// checkWeekendHappyHours sends one notification per day when new Weekend Happy Hour slots appear.
-// Slots are booked in the Octopus app, so they aren't joined like other sessions.
-func (m *SavingSessionMonitor) checkWeekendHappyHours(happyHours []SavingSession) bool {
+// checkWeekendHappyHours books Weekend Happy Hour slots and sends one notification per new day
+func (m *SavingSessionMonitor) checkWeekendHappyHours(happyHours []SavingSession, happyHoursLeft int) bool {
+	if m.state.HappyHourBookings == nil {
+		m.state.HappyHourBookings = make(map[string]int)
+	}
+
 	// Group slots by UK day, noting days with slots we haven't seen
 	slotsByDay := make(map[string][]SavingSession)
 	newDays := make(map[string]bool)
@@ -401,8 +415,16 @@ func (m *SavingSessionMonitor) checkWeekendHappyHours(happyHours []SavingSession
 		}
 	}
 
-	days := make([]string, 0, len(newDays))
-	for day := range newDays {
+	// Forget bookings for days that are over
+	today := time.Now().In(ukLocation).Format("2006-01-02")
+	for day := range m.state.HappyHourBookings {
+		if day < today {
+			delete(m.state.HappyHourBookings, day)
+		}
+	}
+
+	days := make([]string, 0, len(slotsByDay))
+	for day := range slotsByDay {
 		days = append(days, day)
 	}
 	sort.Strings(days)
@@ -410,6 +432,11 @@ func (m *SavingSessionMonitor) checkWeekendHappyHours(happyHours []SavingSession
 	for _, day := range days {
 		slots := slotsByDay[day]
 		sort.Slice(slots, func(i, j int) bool { return slots[i].StartAt.Before(slots[j].StartAt) })
+
+		newlyBooked := m.bookWeekendHappyHours(day, slots, &happyHoursLeft)
+		if !newDays[day] && len(newlyBooked) == 0 {
+			continue
+		}
 
 		dayLabel := slots[0].StartAt.In(ukLocation).Format("Monday, Jan 2")
 		lines := make([]string, 0, len(slots))
@@ -427,11 +454,17 @@ func (m *SavingSessionMonitor) checkWeekendHappyHours(happyHours []SavingSession
 			lines = append(lines, line)
 		}
 
+		bookedLines := make([]string, 0, len(newlyBooked))
+		for _, slot := range newlyBooked {
+			bookedLines = append(bookedLines, formatSlot(slot.StartAt, slot.EndAt))
+		}
+
 		if m.daemonMode {
 			m.logger.Info("WEEKEND HAPPY HOUR FOUND",
 				"date", dayLabel,
 				"slots", strings.Join(lines, ", "),
 				"booked", booked,
+				"happy_hours_left", happyHoursLeft,
 			)
 		} else {
 			m.logger.UserMessage("🍹 WEEKEND HAPPY HOUR FOUND")
@@ -439,18 +472,24 @@ func (m *SavingSessionMonitor) checkWeekendHappyHours(happyHours []SavingSession
 			for _, line := range lines {
 				m.logger.UserMessage("   %s", line)
 			}
-			if !booked {
+			if len(newlyBooked) > 0 {
+				m.logger.UserMessage("   Booked %s (%d Happy Hours left)", strings.Join(bookedLines, ", "), happyHoursLeft)
+			} else if !booked {
 				m.logger.UserMessage("   Book a slot in the Octopus app")
 			}
 		}
 
 		if m.notifier != nil {
+			title := fmt.Sprintf("Weekend Happy Hour: %s", dayLabel)
 			message := "Slots:\n" + strings.Join(lines, "\n")
-			if !booked {
+			if len(newlyBooked) > 0 {
+				title = fmt.Sprintf("Weekend Happy Hour booked: %s", dayLabel)
+				message = fmt.Sprintf("Booked %s.\nHappy Hours left: %d\n\n", strings.Join(bookedLines, ", "), happyHoursLeft) + message
+			} else if !booked {
 				message += "\n\nBook your slot in the Octopus app."
 			}
 			err := m.notify(NtfyMessage{
-				Title:   fmt.Sprintf("Weekend Happy Hour: %s", dayLabel),
+				Title:   title,
 				Message: message,
 				Tags:    []string{"tropical_drink", "zap"},
 			})
@@ -465,7 +504,79 @@ func (m *SavingSessionMonitor) checkWeekendHappyHours(happyHours []SavingSession
 		}
 	}
 
-	return len(days) > 0
+	return len(newDays) > 0
+}
+
+// bookWeekendHappyHours books slots for one day and returns them.
+// Days it already booked aren't rebooked, so cancelling in the app sticks.
+func (m *SavingSessionMonitor) bookWeekendHappyHours(day string, slots []SavingSession, happyHoursLeft *int) []SavingSession {
+	booked := 0
+	for _, slot := range slots {
+		if slot.Joined {
+			booked++
+		}
+	}
+	if m.state.HappyHourBookings[day] > booked {
+		booked = m.state.HappyHourBookings[day]
+	}
+
+	var newlyBooked []SavingSession
+	for _, i := range m.happyHourCandidates(slots) {
+		if booked >= m.happyHoursPerDay || *happyHoursLeft <= 0 {
+			break
+		}
+		slot := &slots[i]
+		if err := m.bookHappyHour(slot.Code); err != nil {
+			// the slot may have filled up since the last check
+			m.logger.Warn("Failed to book Weekend Happy Hour",
+				"event_id", slot.EventID,
+				"start", slot.StartAt.In(ukLocation).Format("Monday, Jan 2 15:04"),
+				"error", err.Error(),
+			)
+			continue
+		}
+		m.logger.Info("Booked Weekend Happy Hour",
+			"event_id", slot.EventID,
+			"start", slot.StartAt.In(ukLocation).Format("Monday, Jan 2 15:04"),
+		)
+		slot.Joined = true
+		booked++
+		*happyHoursLeft--
+		m.state.HappyHourBookings[day]++
+		newlyBooked = append(newlyBooked, *slot)
+	}
+
+	if len(newlyBooked) > 0 {
+		m.state.CachedSavingSessions = nil
+	}
+	return newlyBooked
+}
+
+// happyHourCandidates returns bookable slot indexes in the order to try them
+func (m *SavingSessionMonitor) happyHourCandidates(slots []SavingSession) []int {
+	rank := func(slot SavingSession) int {
+		start := slot.StartAt.In(ukLocation).Format("15:04")
+		for i, t := range m.happyHourTimes {
+			if t == start {
+				return i
+			}
+		}
+		return len(m.happyHourTimes)
+	}
+
+	// bookings close five minutes before the start
+	cutoff := time.Now().Add(5 * time.Minute)
+	var candidates []int
+	for i, slot := range slots {
+		if slot.Joined || slot.CapacityStatus == "FULL" || slot.Code == "" || !slot.StartAt.After(cutoff) {
+			continue
+		}
+		candidates = append(candidates, i)
+	}
+	sort.SliceStable(candidates, func(a, b int) bool {
+		return rank(slots[candidates[a]]) < rank(slots[candidates[b]])
+	})
+	return candidates
 }
 
 // notify sends msg to ntfy, if it's set up

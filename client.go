@@ -137,6 +137,7 @@ type SavingSessionsResponse struct {
 			Account struct {
 				HasJoinedCampaign bool            `json:"hasJoinedCampaign"`
 				JoinedEvents      []SavingSession `json:"joinedEvents"`
+				TokenBalance      int             `json:"tokenBalance"`
 			} `json:"account"`
 			Events []SavingSession `json:"events"` // upcoming and ongoing only
 		} `json:"savingSessions"`
@@ -700,6 +701,7 @@ func (c *OctopusClient) getSavingSessionsGraphQL() (*SavingSessionsResponse, err
 		savingSessions {
 			account(accountNumber: $accountNumber) {
 				hasJoinedCampaign
+				tokenBalance
 				joinedEvents {
 					eventId
 					startAt
@@ -740,6 +742,7 @@ func (c *OctopusClient) getSavingSessionsGraphQL() (*SavingSessionsResponse, err
 			SavingSessions struct {
 				Account struct {
 					HasJoinedCampaign bool `json:"hasJoinedCampaign"`
+					TokenBalance      int  `json:"tokenBalance"`
 					JoinedEvents      []struct {
 						EventID                 int       `json:"eventId"`
 						StartAt                 time.Time `json:"startAt"`
@@ -776,6 +779,7 @@ func (c *OctopusClient) getSavingSessionsGraphQL() (*SavingSessionsResponse, err
 	account := gqlResult.Data.SavingSessions.Account
 	result := &SavingSessionsResponse{}
 	result.Data.SavingSessions.Account.HasJoinedCampaign = account.HasJoinedCampaign
+	result.Data.SavingSessions.Account.TokenBalance = account.TokenBalance
 
 	joined := make(map[int]bool, len(account.JoinedEvents))
 	for _, e := range account.JoinedEvents {
@@ -813,8 +817,8 @@ func (c *OctopusClient) getSavingSessionsGraphQL() (*SavingSessionsResponse, err
 		return result.Data.SavingSessions.Events[i].StartAt.Before(result.Data.SavingSessions.Events[j].StartAt)
 	})
 
-	c.debugLog("Saving sessions: %d upcoming events, %d joined events, campaign joined: %v",
-		len(result.Data.SavingSessions.Events), len(account.JoinedEvents), account.HasJoinedCampaign)
+	c.debugLog("Saving sessions: %d upcoming events, %d joined events, campaign joined: %v, happy hour tokens: %d",
+		len(result.Data.SavingSessions.Events), len(account.JoinedEvents), account.HasJoinedCampaign, account.TokenBalance)
 
 	return result, nil
 }
@@ -1129,6 +1133,48 @@ func (c *OctopusClient) JoinSavingSession(eventCode string) error {
 	}
 	if len(result.Errors) > 0 {
 		return fmt.Errorf("failed to join saving session: %s", result.Errors[0].Message)
+	}
+
+	return nil
+}
+
+// Happy hours need their own mutation, joinSavingSessionsEvent returns "event not found" for them
+func (c *OctopusClient) BookWeekendHappyHour(eventCode string) error {
+	query := `mutation bookSavingSessionsWeekendHappyHourEvent($input: BookSavingSessionsWeekendHappyHourEventInput!) {
+		bookSavingSessionsWeekendHappyHourEvent(input: $input) {
+			bookedEvent {
+				eventId
+			}
+		}
+	}`
+
+	variables := map[string]interface{}{
+		"input": map[string]interface{}{
+			"accountNumber": c.AccountID,
+			"eventCode":     eventCode,
+		},
+	}
+
+	resp, err := c.makeGraphQLRequestWithEndpoint(getEndpoint("backend-graphql"), query, variables, true, "bookSavingSessionsWeekendHappyHourEvent")
+	if err != nil {
+		return fmt.Errorf("failed to book weekend happy hour: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to book weekend happy hour, status: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode booking response: %w", err)
+	}
+	if len(result.Errors) > 0 {
+		return fmt.Errorf("failed to book weekend happy hour: %s", result.Errors[0].Message)
 	}
 
 	return nil

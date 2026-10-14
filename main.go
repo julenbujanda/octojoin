@@ -21,6 +21,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -35,7 +36,8 @@ func min(a, b int) int {
 func main() {
 	var accountID, apiKey, configPath, ntfyURL string
 	var daemon, webUI, debug, showVersion, noSmartIntervals, runTest bool
-	var minPoints, webPort int
+	var minPoints, webPort, happyHoursPerDay int
+	var happyHourTimes string
 	
 	flag.StringVar(&configPath, "config", "", "Path to configuration file")
 	flag.BoolVar(&showVersion, "version", false, "Show version information")
@@ -48,6 +50,8 @@ func main() {
 	flag.IntVar(&webPort, "port", 8080, "Web UI port (default: 8080)")
 	flag.BoolVar(&noSmartIntervals, "no-smart-intervals", false, "Disable smart interval adjustment (use fixed intervals)")
 	flag.StringVar(&ntfyURL, "ntfy-url", os.Getenv("NTFY_URL"), "ntfy topic URL for Weekend Happy Hour notifications")
+	flag.IntVar(&happyHoursPerDay, "happy-hours-per-day", 1, "Weekend Happy Hour slots to book per day, 0-2 (0 = notify only)")
+	flag.StringVar(&happyHourTimes, "happy-hour-times", "", "Comma-separated preferred Weekend Happy Hour start times, UK time (e.g. 11:00,12:00)")
 	flag.BoolVar(&runTest, "test", false, "Run compatibility test to verify OctoJoin requirements and exit")
 	flag.Parse()
 
@@ -91,6 +95,17 @@ func main() {
 	if ntfyURL == "" && config.NtfyURL != "" {
 		ntfyURL = config.NtfyURL
 	}
+	if happyHoursPerDay == 1 && config.HappyHoursPerDay != 1 {
+		happyHoursPerDay = config.HappyHoursPerDay
+	}
+	if happyHourTimes != "" {
+		config.HappyHourTimes = nil
+		for _, t := range strings.Split(happyHourTimes, ",") {
+			if t = strings.TrimSpace(t); t != "" {
+				config.HappyHourTimes = append(config.HappyHourTimes, t)
+			}
+		}
+	}
 	ntfyToken := os.Getenv("NTFY_TOKEN")
 	if ntfyToken == "" {
 		ntfyToken = config.NtfyToken
@@ -104,6 +119,7 @@ func main() {
 	config.WebPort = webPort
 	config.MinPoints = minPoints
 	config.NtfyURL = ntfyURL
+	config.HappyHoursPerDay = happyHoursPerDay
 
 	// Validate configuration
 	if err := config.Validate(); err != nil {
@@ -167,6 +183,7 @@ func main() {
 			fmt.Printf("   Joined sessions: %d", len(sessions.Data.SavingSessions.Account.JoinedEvents))
 			fmt.Printf("   Upcoming events: %d", len(sessions.Data.SavingSessions.Events))
 			fmt.Printf("   Campaign enrolled: %t", sessions.Data.SavingSessions.Account.HasJoinedCampaign)
+			fmt.Printf("   Weekend Happy Hours to book: %d", sessions.Data.SavingSessions.Account.TokenBalance)
 			
 			if !sessions.Data.SavingSessions.Account.HasJoinedCampaign {
 				fmt.Printf("⚠️  Warning: Not enrolled in Saving Sessions campaign")
@@ -296,6 +313,11 @@ func main() {
 		logger.Info("Web UI enabled", "url", fmt.Sprintf("http://localhost:%d", webPort))
 	} else if webUI && !daemon {
 		logger.Warn("Web UI can only be enabled in daemon mode")
+	}
+
+	monitor.SetHappyHourBooking(happyHoursPerDay, config.HappyHourTimes)
+	if happyHoursPerDay > 0 {
+		logger.Info("Weekend Happy Hour booking enabled", "per_day", happyHoursPerDay, "preferred_times", strings.Join(config.HappyHourTimes, ","))
 	}
 
 	if ntfyURL != "" {

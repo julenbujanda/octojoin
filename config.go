@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -34,6 +35,8 @@ type Config struct {
 	NoSmartIntervals bool   `yaml:"no_smart_intervals"`
 	NtfyURL          string `yaml:"ntfy_url"`
 	NtfyToken        string `yaml:"ntfy_token"`
+	HappyHoursPerDay int      `yaml:"happy_hours_per_day"`
+	HappyHourTimes   []string `yaml:"happy_hour_times"`
 }
 
 func LoadConfig(configPath string) (*Config, error) {
@@ -44,6 +47,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		WebUI:         false,
 		WebPort:       8080,
 		Debug:         false,
+		HappyHoursPerDay: 1,
 	}
 
 	if configPath == "" {
@@ -124,6 +128,16 @@ func (c *Config) Validate() error {
 	// Validate ntfy endpoint
 	if c.NtfyURL != "" && !strings.HasPrefix(c.NtfyURL, "https://") && !strings.HasPrefix(c.NtfyURL, "http://") {
 		errors = append(errors, fmt.Sprintf("ntfy URL must start with http:// or https://, got: %s", c.NtfyURL))
+	}
+
+	// Octopus allows up to two Happy Hours per day
+	if c.HappyHoursPerDay < 0 || c.HappyHoursPerDay > 2 {
+		errors = append(errors, fmt.Sprintf("happy hours per day must be between 0 and 2, got: %d", c.HappyHoursPerDay))
+	}
+	for _, t := range c.HappyHourTimes {
+		if _, err := time.Parse("15:04", t); err != nil {
+			errors = append(errors, fmt.Sprintf("happy hour time must be HH:MM (24-hour, UK time), got: %s", t))
+		}
 	}
 
 	// Logical validations

@@ -6,7 +6,7 @@ A Go application that monitors Octopus Energy (UK) saving sessions and free elec
 
 - **Saving Sessions**: Automatically joins sessions that earn OctoPoints for reducing energy usage
 - **Free Electricity**: Monitors and alerts for periods of completely free electricity
-- **Weekend Happy Hours**: Detects newly published Weekend Happy Hour slots and sends push notifications via [ntfy](https://ntfy.sh) 🍹
+- **Weekend Happy Hours**: Automatically books Weekend Happy Hour slots with the Happy Hours you've earned, with push notifications via [ntfy](https://ntfy.sh) 🍹
 - **Wheel of Fortune**: Automatically spins available wheels and collects OctoPoints 🎰
 - **Smart Meter Graphs**: Interactive usage visualization with Chart.js integration 📊
 - **Real-time Dashboard**: Live web interface with countdown timers and session status
@@ -53,6 +53,8 @@ cp config.example.yaml config.yaml
 | `-min-points` | Minimum points to join session | 0 (join all) |
 | `-debug` | Enable debug logging | false |
 | `-no-smart-intervals` | Disable smart interval adjustment | false |
+| `-happy-hours-per-day` | Weekend Happy Hour slots to book per day (0-2, 0 = notify only) | 1 |
+| `-happy-hour-times` | Preferred Weekend Happy Hour start times, UK time (e.g. `11:00,12:00`) | earliest available |
 | `-ntfy-url` | ntfy topic URL for Weekend Happy Hour notifications | `NTFY_URL` env var |
 | `-test` | Run compatibility test and exit | false |
 
@@ -66,12 +68,16 @@ web_port: 8080
 min_points: 100
 debug: false
 no_smart_intervals: false
+happy_hours_per_day: 1                        # 0-2, 0 = notify only
+happy_hour_times: ["11:00", "12:00"]          # optional, preferred start times (UK)
 ntfy_url: "https://ntfy.sh/my-octojoin-topic"  # optional
 ntfy_token: ""                                # optional, or NTFY_TOKEN env var
 ```
 
-### Weekend Happy Hour Notifications
-Octopus publishes Weekend Happy Hours as a set of hourly slots, and you book one of them in the Octopus app. OctoJoin doesn't book a slot for you. When new slots appear, it sends one ntfy notification per day listing them, marking the slot you've already booked and any that are full or nearly full. Set `ntfy_url` to any ntfy topic URL, on ntfy.sh or a self-hosted server. Set `ntfy_token` if the topic requires an access token.
+### Weekend Happy Hours
+Octopus publishes Weekend Happy Hours as a set of hourly slots, and each booking spends one of the Happy Hours you've earned from saving sessions. OctoJoin books slots for you while you have Happy Hours left: `happy_hours_per_day` slots per day (default 1, Octopus allows up to 2). It picks the first of your `happy_hour_times` that still has space, or the earliest available slot if you don't set any, and skips slots that are full or start within 5 minutes. Slots you book yourself count towards the daily limit. If you cancel a slot OctoJoin booked, it won't rebook that day. Set `happy_hours_per_day: 0` to only get notifications.
+
+Notifications are sent via ntfy: one per day when new slots appear, listing them and marking the booked slot and any that are full or nearly full, and one whenever OctoJoin books a slot. Set `ntfy_url` to any ntfy topic URL, on ntfy.sh or a self-hosted server. Set `ntfy_token` if the topic requires an access token.
 
 ### Getting Your Credentials
 1. **Account ID**: Found in your Octopus Energy dashboard

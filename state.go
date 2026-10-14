@@ -75,6 +75,7 @@ type AppState struct {
 	CachedAccountInfo         *CachedAccountInfo                    `json:"cached_account_info,omitempty"`
 	CachedMeterDevices        *CachedMeterDevices                   `json:"cached_meter_devices,omitempty"`
 	CachedUsageMeasurements   *CachedUsageMeasurements              `json:"cached_usage_measurements,omitempty"`
+	HappyHourBookings         map[string]int                        `json:"happy_hour_bookings,omitempty"` // UK day -> slots booked by octojoin
 	JWTToken                  string                                `json:"jwt_token,omitempty"`
 	JWTTokenExpiry            time.Time                             `json:"jwt_token_expiry,omitempty"`
 	LastUpdated               time.Time                             `json:"last_updated"`
