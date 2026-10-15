@@ -72,7 +72,7 @@ happy_hour_slot: "latest"
 # Notifications (ntfy)
 # ========================
 
-# ntfy topic URL for Weekend Happy Hour notifications (new slots and bookings)
+# ntfy topic URL for push notifications (sessions, free electricity, Happy Hours, wheel spins)
 # Works with https://ntfy.sh or a self-hosted ntfy server. Leave empty to disable.
 # Can also be set with -ntfy-url or the NTFY_URL environment variable.
 ntfy_url: ""

@@ -304,6 +304,7 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 					"electricity_points", electricityPoints,
 					"gas_points", gasPoints,
 				)
+				m.notifyWheelSpins(len(results), electricityPoints, gasPoints)
 				
 				// Clear the cached spins so we check for new ones on next run
 				if m.state != nil {
@@ -354,6 +355,7 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 
 				if session.Joined {
 					m.logger.Info("Already joined session", "event_id", session.EventID)
+					m.notifySavingSession(session, "already joined", "", "")
 				} else if m.shouldJoinSession(session) {
 					if m.daemonMode {
 						m.logger.Info("Attempting to join session",
@@ -369,9 +371,11 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 							"event_id", session.EventID,
 							"error", err.Error(),
 						)
+						m.notifySavingSession(session, "not joined", fmt.Sprintf("Couldn't join: %s\nJoin it in the Octopus app.", err), "high")
 					} else {
 						m.logger.Info("Successfully joined session", "event_id", session.EventID)
 						m.state.CachedSavingSessions = nil
+						m.notifySavingSession(session, "joined", "", "")
 					}
 				} else {
 					m.logger.Info("Skipped session - insufficient points",
@@ -379,6 +383,7 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 						"points", session.OctoPoints,
 						"threshold", m.minPointsThreshold,
 					)
+					m.notifySavingSession(session, "skipped", fmt.Sprintf("Below your minimum of %d points.", m.minPointsThreshold), "")
 				}
 			} else {
 				m.logger.Debug("Saving session already started/ended",
@@ -600,6 +605,54 @@ func (m *SavingSessionMonitor) notify(msg NtfyMessage) error {
 	return nil
 }
 
+func (m *SavingSessionMonitor) notifySavingSession(session SavingSession, outcome, detail, priority string) {
+	label := "Saving session"
+	if session.EventType == SavingSessionTypeTurnUp {
+		label = "Turn Up session"
+	}
+	message := fmt.Sprintf("%s\nReward: %d OctoPoints per kWh", formatSlot(session.StartAt, session.EndAt), session.OctoPoints)
+	if detail != "" {
+		message += "\n" + detail
+	}
+	tags := []string{"moneybag"}
+	if priority == "high" {
+		tags = append(tags, "warning")
+	}
+	m.notify(NtfyMessage{
+		Title:    fmt.Sprintf("%s %s: %s", label, outcome, session.StartAt.In(ukLocation).Format("Monday, Jan 2")),
+		Message:  message,
+		Tags:     tags,
+		Priority: priority,
+	})
+}
+
+func (m *SavingSessionMonitor) notifyFreeElectricity(session FreeElectricitySession, alertType string) {
+	msg := NtfyMessage{
+		Title:   fmt.Sprintf("Free electricity: %s", session.StartAt.In(ukLocation).Format("Monday, Jan 2")),
+		Message: formatSlot(session.StartAt, session.EndAt),
+		Tags:    []string{"zap"},
+	}
+	switch alertType {
+	case "ACTIVE NOW":
+		msg.Title = "Free electricity now"
+		msg.Message = fmt.Sprintf("Free until %s.", session.EndAt.In(ukLocation).Format("15:04"))
+		msg.Priority = "high"
+	case "STARTING SOON":
+		msg.Title = "Free electricity starting soon"
+		msg.Message += fmt.Sprintf(", starts in %s.", m.formatTimeUntil(time.Until(session.StartAt)))
+		msg.Priority = "high"
+	}
+	m.notify(msg)
+}
+
+func (m *SavingSessionMonitor) notifyWheelSpins(spins, electricityPoints, gasPoints int) {
+	m.notify(NtfyMessage{
+		Title:   fmt.Sprintf("Wheel of Fortune: won %d OctoPoints", electricityPoints+gasPoints),
+		Message: fmt.Sprintf("%d spins. Electricity: %d points, gas: %d points.", spins, electricityPoints, gasPoints),
+		Tags:    []string{"slot_machine"},
+	})
+}
+
 // formatSlot formats a time range in UK time, e.g. 11:00-12:00
 func formatSlot(start, end time.Time) string {
 	return start.In(ukLocation).Format("15:04") + "-" + end.In(ukLocation).Format("15:04")
@@ -661,6 +714,7 @@ func (m *SavingSessionMonitor) checkFreeElectricitySessions() bool {
 				m.logger.UserMessage("   Time remaining: %s", m.formatTimeUntil(timeLeft))
 				m.logger.UserMessage("   Ends at %s", session.EndAt.In(ukLocation).Format("15:04"))
 			}
+			m.notifyFreeElectricity(session, alertType)
 		} else {
 			// Upcoming session
 			startsIn := ""
@@ -684,6 +738,7 @@ func (m *SavingSessionMonitor) checkFreeElectricitySessions() bool {
 				m.logger.UserMessage("   Starts in %s", startsIn)
 				m.logger.UserMessage("   No action needed - automatically free!")
 			}
+			m.notifyFreeElectricity(session, alertType)
 		}
 	}
 

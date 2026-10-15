@@ -49,7 +49,7 @@ func main() {
 	flag.IntVar(&minPoints, "min-points", 0, "Minimum points threshold to join a session (0 = join all sessions)")
 	flag.IntVar(&webPort, "port", 8080, "Web UI port (default: 8080)")
 	flag.BoolVar(&noSmartIntervals, "no-smart-intervals", false, "Disable smart interval adjustment (use fixed intervals)")
-	flag.StringVar(&ntfyURL, "ntfy-url", os.Getenv("NTFY_URL"), "ntfy topic URL for Weekend Happy Hour notifications")
+	flag.StringVar(&ntfyURL, "ntfy-url", os.Getenv("NTFY_URL"), "ntfy topic URL for push notifications")
 	flag.IntVar(&happyHoursPerDay, "happy-hours-per-day", 1, "Weekend Happy Hour slots to book per day, 0-2 (0 = notify only)")
 	flag.StringVar(&happyHourTimes, "happy-hour-times", "", "Comma-separated preferred Weekend Happy Hour start times, UK time (e.g. 11:00,12:00)")
 	flag.StringVar(&happyHourSlot, "happy-hour-slot", "", "Weekend Happy Hour slot to book when no preferred time has space: latest or earliest (default latest)")
@@ -326,7 +326,7 @@ func main() {
 
 	if ntfyURL != "" {
 		monitor.SetNotifier(NewNtfyNotifier(ntfyURL, ntfyToken))
-		logger.Info("ntfy notifications enabled for Weekend Happy Hours")
+		logger.Info("ntfy notifications enabled")
 	}
 
 	if minPoints > 0 {

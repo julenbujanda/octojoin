@@ -237,6 +237,68 @@ func TestCheckWeekendHappyHoursBooksEarliestSlot(t *testing.T) {
 	}
 }
 
+func captureNotifications(t *testing.T) (*SavingSessionMonitor, *[]http.Header, *[]string) {
+	var headers []http.Header
+	var bodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		headers = append(headers, r.Header.Clone())
+		bodies = append(bodies, string(body))
+	}))
+	t.Cleanup(server.Close)
+	return newTestMonitor(NewNtfyNotifier(server.URL, "")), &headers, &bodies
+}
+
+func TestNotifySavingSession(t *testing.T) {
+	m, headers, bodies := captureNotifications(t)
+	start := time.Date(2026, 10, 20, 16, 30, 0, 0, time.UTC)
+	session := SavingSession{StartAt: start, EndAt: start.Add(time.Hour), OctoPoints: 150}
+
+	m.notifySavingSession(session, "joined", "", "")
+	session.EventType = SavingSessionTypeTurnUp
+	m.notifySavingSession(session, "not joined", "Couldn't join: boom", "high")
+
+	if len(*headers) != 2 {
+		t.Fatalf("expected 2 notifications, got %d", len(*headers))
+	}
+	if got := (*headers)[0].Get("Title"); got != "Saving session joined: Tuesday, Oct 20" {
+		t.Errorf("unexpected title: %q", got)
+	}
+	if got := (*bodies)[0]; got != "17:30-18:30\nReward: 150 OctoPoints per kWh" {
+		t.Errorf("unexpected body: %q", got)
+	}
+	if got := (*headers)[1].Get("Title"); got != "Turn Up session not joined: Tuesday, Oct 20" {
+		t.Errorf("unexpected title: %q", got)
+	}
+	if (*headers)[1].Get("Priority") != "high" || !strings.Contains((*bodies)[1], "Couldn't join: boom") {
+		t.Errorf("expected a high priority failure notification, got %v %q", (*headers)[1], (*bodies)[1])
+	}
+}
+
+func TestNotifyFreeElectricity(t *testing.T) {
+	m, headers, bodies := captureNotifications(t)
+	start := time.Date(2026, 10, 18, 11, 0, 0, 0, time.UTC)
+	session := FreeElectricitySession{Code: "FE1", StartAt: start, EndAt: start.Add(2 * time.Hour)}
+
+	m.notifyFreeElectricity(session, "INITIAL ALERT")
+	m.notifyFreeElectricity(session, "ACTIVE NOW")
+
+	if got := (*headers)[0].Get("Title") + "|" + (*bodies)[0]; got != "Free electricity: Sunday, Oct 18|12:00-14:00" {
+		t.Errorf("unexpected reminder: %q", got)
+	}
+	if got := (*headers)[1].Get("Title") + "|" + (*bodies)[1]; got != "Free electricity now|Free until 14:00." {
+		t.Errorf("unexpected active notification: %q", got)
+	}
+}
+
+func TestNotifyWheelSpins(t *testing.T) {
+	m, headers, bodies := captureNotifications(t)
+	m.notifyWheelSpins(3, 16, 8)
+	if got := (*headers)[0].Get("Title") + "|" + (*bodies)[0]; got != "Wheel of Fortune: won 24 OctoPoints|3 spins. Electricity: 16 points, gas: 8 points." {
+		t.Errorf("unexpected wheel notification: %q", got)
+	}
+}
+
 func TestNotifyWithoutNotifier(t *testing.T) {
 	m := newTestMonitor(nil)
 	if err := m.notify(NtfyMessage{Title: "x"}); err != nil {
