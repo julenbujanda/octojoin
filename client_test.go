@@ -178,3 +178,14 @@ func TestUKLocationDisplay(t *testing.T) {
 		t.Errorf("expected GMT time 17:00, got %s", got)
 	}
 }
+
+func TestHappyHoursAvailable(t *testing.T) {
+	// Each booking spends two tokens, so an odd token is left over
+	for tokens, want := range map[int]int{0: 0, 1: 0, 2: 1, 3: 1, 4: 2} {
+		resp := &SavingSessionsResponse{}
+		resp.Data.SavingSessions.Account.TokenBalance = tokens
+		if got := resp.HappyHoursAvailable(); got != want {
+			t.Errorf("%d tokens: expected %d Happy Hours, got %d", tokens, want, got)
+		}
+	}
+}

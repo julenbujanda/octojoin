@@ -29,6 +29,9 @@ func loadUKLocation() *time.Location {
 	return loc
 }
 
+// HappyHourTokensPerBooking - Tokens spent per Weekend Happy Hour booking
+const HappyHourTokensPerBooking = 2
+
 // Weekend Happy Hour slot to book when no preferred time is free
 const (
 	HappyHourSlotLatest   = "latest"

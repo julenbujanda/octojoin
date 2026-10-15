@@ -97,6 +97,11 @@ type SavingSession struct {
 	Joined         bool      `json:"joined"`
 }
 
+// HappyHoursAvailable returns how many Weekend Happy Hours the account's tokens can book
+func (r *SavingSessionsResponse) HappyHoursAvailable() int {
+	return r.Data.SavingSessions.Account.TokenBalance / HappyHourTokensPerBooking
+}
+
 func (s SavingSession) IsWeekendHappyHour() bool {
 	return s.EventType == SavingSessionTypeWeekendHappyHour
 }

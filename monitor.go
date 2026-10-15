@@ -390,7 +390,7 @@ func (m *SavingSessionMonitor) checkSavingSessions() bool {
 		}
 	}
 
-	if m.checkWeekendHappyHours(happyHours, response.Data.SavingSessions.Account.TokenBalance) {
+	if m.checkWeekendHappyHours(happyHours, response.HappyHoursAvailable()) {
 		foundNewSessions = true
 	}
 

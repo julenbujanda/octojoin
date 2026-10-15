@@ -187,7 +187,7 @@ func main() {
 			fmt.Printf("   Joined sessions: %d", len(sessions.Data.SavingSessions.Account.JoinedEvents))
 			fmt.Printf("   Upcoming events: %d", len(sessions.Data.SavingSessions.Events))
 			fmt.Printf("   Campaign enrolled: %t", sessions.Data.SavingSessions.Account.HasJoinedCampaign)
-			fmt.Printf("   Weekend Happy Hours to book: %d", sessions.Data.SavingSessions.Account.TokenBalance)
+			fmt.Printf("   Weekend Happy Hours to book: %d (%d tokens)", sessions.HappyHoursAvailable(), sessions.Data.SavingSessions.Account.TokenBalance)
 			
 			if !sessions.Data.SavingSessions.Account.HasJoinedCampaign {
 				fmt.Printf("⚠️  Warning: Not enrolled in Saving Sessions campaign")
