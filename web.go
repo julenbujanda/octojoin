@@ -20,13 +20,15 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 )
 
 type CampaignStatus struct {
 	SavingSessionsEnabled    bool `json:"saving_sessions_enabled"`
-	FreeElectricityEnabled   bool `json:"free_electricity_enabled"`
+	FreeElectricityEnabled   bool `json:"free_electricity_enabled"` // via free_electricity or Weekend Happy Hours
+	WeekendHappyHoursEnabled bool `json:"weekend_happy_hours_enabled"`
 	HasOctoplus             bool `json:"has_octoplus"`
 	HasSavingSessions       bool `json:"has_saving_sessions"`
 	HasFreeElectricity      bool `json:"has_free_electricity"`
@@ -38,6 +40,7 @@ type SessionData struct {
 	WheelOfFortuneSpins *WheelOfFortuneSpins     `json:"wheel_of_fortune_spins"`
 	SavingSessions      []SavingSession          `json:"saving_sessions"`
 	FreeElectricitySessions []FreeElectricitySession `json:"free_electricity_sessions"`
+	WeekendHappyHours   []SavingSession          `json:"weekend_happy_hours"`
 	CampaignStatus      CampaignStatus           `json:"campaign_status"`
 	LastUpdated         time.Time                `json:"last_updated"`
 }
@@ -134,15 +137,22 @@ func (ws *WebServer) handleSessionsAPI(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	var upcomingSavingSessions []SavingSession
 	var upcomingFreeElectricitySessions []FreeElectricitySession
+	var upcomingHappyHours []SavingSession
 	
-	// Filter saving sessions
+	// Filter saving sessions, keeping Weekend Happy Hours (free electricity) apart
 	if sessions != nil {
 		for _, session := range sessions.Data.SavingSessions.Events {
-			if session.EndAt.After(now) {
+			if !session.EndAt.After(now) {
+				continue
+			}
+			if session.IsWeekendHappyHour() {
+				upcomingHappyHours = append(upcomingHappyHours, session)
+			} else {
 				upcomingSavingSessions = append(upcomingSavingSessions, session)
 			}
 		}
 	}
+	sortHappyHours(upcomingHappyHours)
 	
 	// Filter free electricity sessions  
 	if freeElectricity != nil {
@@ -186,12 +196,15 @@ func (ws *WebServer) handleSessionsAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	savingSessionsEnabled := campaigns["octoplus"] && campaigns["octoplus-saving-sessions"]
+	happyHoursEnabled := savingSessionsEnabled || len(upcomingHappyHours) > 0
 	campaignStatus := CampaignStatus{
-		HasOctoplus:             campaigns["octoplus"],
-		HasSavingSessions:       campaigns["octoplus-saving-sessions"],
-		HasFreeElectricity:      campaigns["free_electricity"],
-		SavingSessionsEnabled:   campaigns["octoplus"] && campaigns["octoplus-saving-sessions"],
-		FreeElectricityEnabled:  campaigns["free_electricity"],
+		HasOctoplus:              campaigns["octoplus"],
+		HasSavingSessions:        campaigns["octoplus-saving-sessions"],
+		HasFreeElectricity:       campaigns["free_electricity"],
+		SavingSessionsEnabled:    savingSessionsEnabled,
+		FreeElectricityEnabled:   campaigns["free_electricity"] || happyHoursEnabled,
+		WeekendHappyHoursEnabled: happyHoursEnabled,
 	}
 	
 	// Ensure arrays are never nil
@@ -201,6 +214,9 @@ func (ws *WebServer) handleSessionsAPI(w http.ResponseWriter, r *http.Request) {
 	if upcomingFreeElectricitySessions == nil {
 		upcomingFreeElectricitySessions = []FreeElectricitySession{}
 	}
+	if upcomingHappyHours == nil {
+		upcomingHappyHours = []SavingSession{}
+	}
 	
 	data := SessionData{
 		CurrentPoints:               currentPoints,
@@ -208,6 +224,7 @@ func (ws *WebServer) handleSessionsAPI(w http.ResponseWriter, r *http.Request) {
 		WheelOfFortuneSpins:        wheelSpins,
 		SavingSessions:             upcomingSavingSessions,
 		FreeElectricitySessions:    upcomingFreeElectricitySessions,
+		WeekendHappyHours:          upcomingHappyHours,
 		CampaignStatus:             campaignStatus,
 		LastUpdated:                time.Now(),
 	}
@@ -215,6 +232,21 @@ func (ws *WebServer) handleSessionsAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(data)
+}
+
+// sortHappyHours orders slots by UK day, with booked slots first within each day
+func sortHappyHours(slots []SavingSession) {
+	sort.SliceStable(slots, func(i, j int) bool {
+		dayI := slots[i].StartAt.In(ukLocation).Format("2006-01-02")
+		dayJ := slots[j].StartAt.In(ukLocation).Format("2006-01-02")
+		if dayI != dayJ {
+			return dayI < dayJ
+		}
+		if slots[i].Joined != slots[j].Joined {
+			return slots[i].Joined
+		}
+		return slots[i].StartAt.Before(slots[j].StartAt)
+	})
 }
 
 func (ws *WebServer) handleUsageAPI(w http.ResponseWriter, r *http.Request) {
@@ -738,7 +770,7 @@ func (ws *WebServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
                             <div>Upcoming Saving Sessions</div>
                         </div>
                         <div class="status-item">
-                            <div class="status-value">${data.free_electricity_sessions ? data.free_electricity_sessions.length : 0}</div>
+                            <div class="status-value">${(data.free_electricity_sessions || []).length + (data.weekend_happy_hours || []).filter(s => s.joined).length}</div>
                             <div>Upcoming Free Electricity Sessions</div>
                         </div>
                         <div class="status-item">
@@ -769,7 +801,7 @@ func (ws *WebServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
                         <div class="campaign-item">
                             <div>
                                 <div class="campaign-name">Free Electricity Sessions</div>
-                                <div class="campaign-requirement">Requires: free_electricity</div>
+                                <div class="campaign-requirement">Requires: free_electricity or Weekend Happy Hours (${data.campaign_status.has_free_electricity ? '✅' : '❌'} free_electricity, ${data.campaign_status.weekend_happy_hours_enabled ? '✅' : '❌'} Weekend Happy Hours)</div>
                             </div>
                             <div class="${data.campaign_status.free_electricity_enabled ? 'status-enabled' : 'status-disabled'}">
                                 ${data.campaign_status.free_electricity_enabled ? '✅ ENABLED' : '❌ DISABLED'}
@@ -809,15 +841,13 @@ func (ws *WebServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     } else {
                         newSavingContent = data.saving_sessions.map(session => {
                             const duration = Math.floor((new Date(session.endAt) - new Date(session.startAt)) / (1000 * 60));
-                            const isHappyHour = session.eventType === 'WEEKEND_HAPPY_HOUR';
-                            const label = isHappyHour ? '🍹 Weekend Happy Hour' : (session.eventType === 'TURN_UP' ? '⬆️ Turn Up' : '⬇️ Saving Session');
-                            const joined = session.joined ? (isHappyHour ? ' | ✅ Booked' : ' | ✅ Joined') : '';
-                            const points = isHappyHour ? '' : ` + "`" + ` | Points: ${session.octopoints}/kWh` + "`" + `;
+                            const label = session.eventType === 'TURN_UP' ? '⬆️ Turn Up' : '⬇️ Saving Session';
+                            const joined = session.joined ? ' | ✅ Joined' : '';
                             return ` + "`" + `
                                 <div class="session">
                                     <div class="session-date">${formatDate(session.startAt)}</div>
                                     <div class="session-details">
-                                        ${label} | Duration: ${formatDuration(duration)}${points}${joined}
+                                        ${label} | Duration: ${formatDuration(duration)} | Points: ${session.octopoints}/kWh${joined}
                                     </div>
                                     <div class="session-countdown" data-target="${session.startAt}"></div>
                                 </div>
@@ -840,14 +870,20 @@ func (ws *WebServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     // Update free electricity sessions
                     const freeDiv = document.getElementById('free-electricity-sessions');
                     let newFreeContent = '';
-                    if (!data.free_electricity_sessions || data.free_electricity_sessions.length === 0) {
+                    // Free electricity sessions and Weekend Happy Hours, grouped by UK day
+                    // (the API already lists booked Happy Hours first within a day)
+                    const ukDay = t => new Date(t).toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+                    const freeItems = (data.free_electricity_sessions || []).map(s => ({ start: s.start, end: s.end, label: '🔋 Free Electricity', status: '' }))
+                        .concat((data.weekend_happy_hours || []).map(s => ({ start: s.startAt, end: s.endAt, label: '🍹 Weekend Happy Hour', status: s.joined ? ' | ✅ Booked' : (s.capacityStatus === 'FULL' ? ' | Full' : ' | Not booked') })))
+                        .sort((a, b) => ukDay(a.start).localeCompare(ukDay(b.start)));
+                    if (freeItems.length === 0) {
                         if (data.campaign_status.free_electricity_enabled) {
                             newFreeContent = '<div class="no-sessions">No upcoming free electricity sessions</div>';
                         } else {
                             newFreeContent = '<div class="no-sessions">Free electricity disabled - missing required campaign</div>';
                         }
                     } else {
-                        newFreeContent = data.free_electricity_sessions.map(session => {
+                        newFreeContent = freeItems.map(session => {
                             const startTime = new Date(session.start);
                             const endTime = new Date(session.end);
                             const duration = Math.floor((endTime - startTime) / (1000 * 60));
@@ -855,7 +891,7 @@ func (ws *WebServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
                                 <div class="session">
                                     <div class="session-date">${formatDate(session.start)}</div>
                                     <div class="session-details">
-                                        Duration: ${formatDuration(duration)} | Free electricity!
+                                        ${session.label} | Duration: ${formatDuration(duration)}${session.status}
                                     </div>
                                     <div class="session-countdown" data-target="${session.start}"></div>
                                 </div>
@@ -864,7 +900,7 @@ func (ws *WebServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
                     }
                     
                     // Check if free electricity sessions data has changed
-                    const currentFreeSessionsKey = JSON.stringify(data.free_electricity_sessions || []);
+                    const currentFreeSessionsKey = JSON.stringify(freeItems);
                     if (window.lastFreeSessionsKey !== currentFreeSessionsKey) {
                         freeDiv.innerHTML = newFreeContent;
                         window.lastFreeSessionsKey = currentFreeSessionsKey;
