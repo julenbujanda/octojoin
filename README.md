@@ -40,6 +40,25 @@ cp config.example.yaml config.yaml
 
 **Web Dashboard**: Access at `http://localhost:8080` (daemon mode only)
 
+### Docker Compose
+```bash
+git clone https://github.com/julenbujanda/octojoin.git
+cd octojoin
+# Edit the environment section of docker-compose.yaml with your credentials
+docker compose up -d
+```
+The container runs in daemon mode with the web dashboard on port 8080, and keeps its state in the `octojoin-data` volume. Every option can be set with an environment variable; `docker-compose.yaml` lists them all with example values:
+
+| Variable | Equivalent option |
+|----------|-------------------|
+| `OCTOPUS_ACCOUNT_ID`, `OCTOPUS_API_KEY` | `-account`, `-key` |
+| `OCTOJOIN_DAEMON`, `OCTOJOIN_WEB`, `OCTOJOIN_PORT` | `-daemon`, `-web`, `-port` |
+| `OCTOJOIN_MIN_POINTS` | `-min-points` |
+| `OCTOJOIN_HAPPY_HOURS_PER_DAY`, `OCTOJOIN_HAPPY_HOUR_TIMES`, `OCTOJOIN_HAPPY_HOUR_SLOT` | `-happy-hours-per-day`, `-happy-hour-times`, `-happy-hour-slot` |
+| `NTFY_URL`, `NTFY_TOKEN` | `-ntfy-url`, `ntfy_token` |
+| `OCTOJOIN_DEBUG`, `OCTOJOIN_NO_SMART_INTERVALS` | `-debug`, `-no-smart-intervals` |
+| `OCTOJOIN_CONFIG` | `-config` |
+
 ## Configuration
 
 ### Command Line Options

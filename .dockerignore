@@ -1,0 +1,9 @@
+.git
+.github
+.vscode
+.secrets
+octojoin
+octojoin.exe
+config.yaml
+config.yml
+*.log

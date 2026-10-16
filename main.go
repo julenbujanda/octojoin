@@ -21,6 +21,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -33,26 +34,52 @@ func min(a, b int) int {
 	return b
 }
 
+// envBool returns the boolean value of an environment variable, or def when it isn't set
+func envBool(name string, def bool) bool {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		log.Fatalf("Invalid value for %s: %q (use true or false)", name, v)
+	}
+	return b
+}
+
+// envInt returns the integer value of an environment variable, or def when it isn't set
+func envInt(name string, def int) int {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	i, err := strconv.Atoi(v)
+	if err != nil {
+		log.Fatalf("Invalid value for %s: %q (use a whole number)", name, v)
+	}
+	return i
+}
+
 func main() {
 	var accountID, apiKey, configPath, ntfyURL string
 	var daemon, webUI, debug, showVersion, noSmartIntervals, runTest bool
 	var minPoints, webPort, happyHoursPerDay int
 	var happyHourTimes, happyHourSlot string
 	
-	flag.StringVar(&configPath, "config", "", "Path to configuration file")
+	flag.StringVar(&configPath, "config", os.Getenv("OCTOJOIN_CONFIG"), "Path to configuration file")
 	flag.BoolVar(&showVersion, "version", false, "Show version information")
 	flag.StringVar(&accountID, "account", os.Getenv("OCTOPUS_ACCOUNT_ID"), "Octopus Energy Account ID")
 	flag.StringVar(&apiKey, "key", os.Getenv("OCTOPUS_API_KEY"), "Octopus Energy API Key")
-	flag.BoolVar(&daemon, "daemon", false, "Run in daemon mode (continuous monitoring)")
-	flag.BoolVar(&webUI, "web", false, "Enable web UI dashboard (daemon mode only)")
-	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
-	flag.IntVar(&minPoints, "min-points", 0, "Minimum points threshold to join a session (0 = join all sessions)")
-	flag.IntVar(&webPort, "port", 8080, "Web UI port (default: 8080)")
-	flag.BoolVar(&noSmartIntervals, "no-smart-intervals", false, "Disable smart interval adjustment (use fixed intervals)")
+	flag.BoolVar(&daemon, "daemon", envBool("OCTOJOIN_DAEMON", false), "Run in daemon mode (continuous monitoring)")
+	flag.BoolVar(&webUI, "web", envBool("OCTOJOIN_WEB", false), "Enable web UI dashboard (daemon mode only)")
+	flag.BoolVar(&debug, "debug", envBool("OCTOJOIN_DEBUG", false), "Enable debug logging")
+	flag.IntVar(&minPoints, "min-points", envInt("OCTOJOIN_MIN_POINTS", 0), "Minimum points threshold to join a session (0 = join all sessions)")
+	flag.IntVar(&webPort, "port", envInt("OCTOJOIN_PORT", 8080), "Web UI port (default: 8080)")
+	flag.BoolVar(&noSmartIntervals, "no-smart-intervals", envBool("OCTOJOIN_NO_SMART_INTERVALS", false), "Disable smart interval adjustment (use fixed intervals)")
 	flag.StringVar(&ntfyURL, "ntfy-url", os.Getenv("NTFY_URL"), "ntfy topic URL for push notifications")
-	flag.IntVar(&happyHoursPerDay, "happy-hours-per-day", 1, "Weekend Happy Hour slots to book per day, 0-2 (0 = notify only)")
-	flag.StringVar(&happyHourTimes, "happy-hour-times", "", "Comma-separated preferred Weekend Happy Hour start times, UK time (e.g. 11:00,12:00)")
-	flag.StringVar(&happyHourSlot, "happy-hour-slot", "", "Weekend Happy Hour slot to book when no preferred time has space: latest or earliest (default latest)")
+	flag.IntVar(&happyHoursPerDay, "happy-hours-per-day", envInt("OCTOJOIN_HAPPY_HOURS_PER_DAY", 1), "Weekend Happy Hour slots to book per day, 0-2 (0 = notify only)")
+	flag.StringVar(&happyHourTimes, "happy-hour-times", os.Getenv("OCTOJOIN_HAPPY_HOUR_TIMES"), "Comma-separated preferred Weekend Happy Hour start times, UK time (e.g. 11:00,12:00)")
+	flag.StringVar(&happyHourSlot, "happy-hour-slot", os.Getenv("OCTOJOIN_HAPPY_HOUR_SLOT"), "Weekend Happy Hour slot to book when no preferred time has space: latest or earliest (default latest)")
 	flag.BoolVar(&runTest, "test", false, "Run compatibility test to verify OctoJoin requirements and exit")
 	flag.Parse()
 
