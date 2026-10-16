@@ -16,6 +16,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -131,8 +132,13 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate ntfy endpoint
-	if c.NtfyURL != "" && !strings.HasPrefix(c.NtfyURL, "https://") && !strings.HasPrefix(c.NtfyURL, "http://") {
-		errors = append(errors, fmt.Sprintf("ntfy URL must start with http:// or https://, got: %s", c.NtfyURL))
+	if c.NtfyURL != "" {
+		if !strings.HasPrefix(c.NtfyURL, "https://") && !strings.HasPrefix(c.NtfyURL, "http://") {
+			errors = append(errors, fmt.Sprintf("ntfy URL must start with http:// or https://, got: %s", c.NtfyURL))
+		} else if u, err := url.Parse(c.NtfyURL); err != nil || strings.Trim(u.Path, "/") == "" {
+			// Posting to the server root makes ntfy expect a JSON body
+			errors = append(errors, fmt.Sprintf("ntfy URL must include a topic, e.g. https://ntfy.sh/my-octojoin-topic, got: %s", c.NtfyURL))
+		}
 	}
 
 	// Octopus allows up to two Happy Hours per day

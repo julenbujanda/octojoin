@@ -62,7 +62,7 @@ func envInt(name string, def int) int {
 
 func main() {
 	var accountID, apiKey, configPath, ntfyURL string
-	var daemon, webUI, debug, showVersion, noSmartIntervals, runTest bool
+	var daemon, webUI, debug, showVersion, noSmartIntervals, runTest, testNtfy bool
 	var minPoints, webPort, happyHoursPerDay int
 	var happyHourTimes, happyHourSlot string
 	
@@ -81,6 +81,7 @@ func main() {
 	flag.StringVar(&happyHourTimes, "happy-hour-times", os.Getenv("OCTOJOIN_HAPPY_HOUR_TIMES"), "Comma-separated preferred Weekend Happy Hour start times, UK time (e.g. 11:00,12:00)")
 	flag.StringVar(&happyHourSlot, "happy-hour-slot", os.Getenv("OCTOJOIN_HAPPY_HOUR_SLOT"), "Weekend Happy Hour slot to book when no preferred time has space: latest or earliest (default latest)")
 	flag.BoolVar(&runTest, "test", false, "Run compatibility test to verify OctoJoin requirements and exit")
+	flag.BoolVar(&testNtfy, "test-ntfy", false, "Send a test ntfy notification and exit")
 	flag.Parse()
 
 	// Handle version flag
@@ -155,6 +156,19 @@ func main() {
 	// Validate configuration
 	if err := config.Validate(); err != nil {
 		log.Fatal(err)
+	}
+
+	if testNtfy {
+		if ntfyURL == "" {
+			fmt.Println("❌ ntfy is not configured: set NTFY_URL, -ntfy-url or ntfy_url")
+			os.Exit(1)
+		}
+		if err := NewNtfyNotifier(ntfyURL, ntfyToken).SendTest(); err != nil {
+			fmt.Printf("❌ Failed to send test notification: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("✅ Test notification sent to %s\n", ntfyURL)
+		return
 	}
 
 	if accountID == "" || apiKey == "" {
@@ -306,6 +320,17 @@ func main() {
 			fmt.Printf("   Gas spins: %d", spins.GasSpins)
 		}
 		
+		// Test 8: ntfy notifications
+		fmt.Println("\n8️⃣  Testing ntfy notifications...")
+		if ntfyURL == "" {
+			fmt.Println("⏭️  ntfy not configured, skipping")
+		} else if err := NewNtfyNotifier(ntfyURL, ntfyToken).SendTest(); err != nil {
+			fmt.Printf("❌ Failed to send test notification: %v\n", err)
+			testPassed = false
+		} else {
+			fmt.Println("✅ Test notification sent - check your ntfy app")
+		}
+
 		// Final results
 		fmt.Println("\n===========================================")
 		if testPassed {

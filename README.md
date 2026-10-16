@@ -78,6 +78,7 @@ The container runs in daemon mode with the web dashboard on port 8080, and keeps
 | `-happy-hour-slot` | Slot to book when no preferred time has space: `latest` or `earliest` | latest |
 | `-ntfy-url` | ntfy topic URL for push notifications | `NTFY_URL` env var |
 | `-test` | Run compatibility test and exit | false |
+| `-test-ntfy` | Send a test ntfy notification and exit | false |
 
 ### Configuration File (config.yaml)
 ```yaml
@@ -105,6 +106,12 @@ Set `ntfy_url` to an ntfy topic URL, on ntfy.sh or a self-hosted server, and `nt
 - free electricity is coming up: when it's first seen, on the day, 12 and 6 hours before, just before it starts and when it starts
 - new Weekend Happy Hour slots are published (one per day, marking full and booked slots) or a slot is booked
 - it spins the Wheel of Fortune
+
+The URL must include the topic (`https://ntfy.sh/my-octojoin-topic`, not `https://ntfy.sh`). To check notifications work, run `octojoin -test-ntfy`, or with Docker Compose:
+
+```bash
+docker compose run --rm octojoin -test-ntfy
+```
 
 ### Getting Your Credentials
 1. **Account ID**: Found in your Octopus Energy dashboard

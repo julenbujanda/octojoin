@@ -46,6 +46,15 @@ func NewNtfyNotifier(url, token string) *NtfyNotifier {
 	}
 }
 
+// SendTest publishes a test notification to check ntfy is set up
+func (n *NtfyNotifier) SendTest() error {
+	return n.Send(NtfyMessage{
+		Title:   "OctoJoin test notification",
+		Message: "ntfy notifications from OctoJoin are working.",
+		Tags:    []string{"white_check_mark"},
+	})
+}
+
 func (n *NtfyNotifier) Send(msg NtfyMessage) error {
 	req, err := http.NewRequest("POST", n.URL, strings.NewReader(msg.Message))
 	if err != nil {

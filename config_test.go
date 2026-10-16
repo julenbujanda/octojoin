@@ -227,10 +227,12 @@ func TestValidateNtfyURL(t *testing.T) {
 		t.Errorf("expected valid ntfy URL to pass, got %v", err)
 	}
 
-	invalid := base
-	invalid.NtfyURL = "ntfy.sh/my-topic"
-	if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), "ntfy URL") {
-		t.Errorf("expected ntfy URL validation error, got %v", err)
+	for _, bad := range []string{"ntfy.sh/my-topic", "https://ntfy.sh", "https://ntfy.sh/"} {
+		invalid := base
+		invalid.NtfyURL = bad
+		if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), "ntfy URL") {
+			t.Errorf("expected ntfy URL validation error for %q, got %v", bad, err)
+		}
 	}
 }
 

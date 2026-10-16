@@ -23,6 +23,7 @@ services:
       OCTOJOIN_HAPPY_HOUR_SLOT: "latest"         # "latest" or "earliest", when no preferred time has space
 
       # Optional: ntfy push notifications (leave empty to disable)
+      # The URL must include the topic. Test with: docker compose run --rm octojoin -test-ntfy
       NTFY_URL: "https://ntfy.sh/my-octojoin-topic"
       NTFY_TOKEN: ""                             # only if the topic needs an access token
 
