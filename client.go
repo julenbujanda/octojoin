@@ -16,6 +16,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -249,6 +250,10 @@ func (c *OctopusClient) loadJWTFromState() {
 	if c.state != nil && c.state.JWTToken != "" {
 		c.jwtToken = c.state.JWTToken
 		c.jwtExpiry = c.state.JWTTokenExpiry
+		// Older versions cached the refresh token's expiry; trust the token's own exp claim
+		if exp, err := jwtExpiry(c.jwtToken); err == nil {
+			c.jwtExpiry = exp
+		}
 		c.debugLog("Loaded cached JWT token, expires: %v", c.jwtExpiry)
 	}
 }
@@ -344,12 +349,7 @@ func (c *OctopusClient) makeGraphQLRequestWithEndpoint(endpoint, query string, v
 
 		// Check if the response contains JWT expiration error
 		bodyStr := string(bodyBytes)
-		if strings.Contains(bodyStr, "Signature of the JWT has expired") ||
-		   strings.Contains(bodyStr, "JWT has expired") ||
-		   strings.Contains(bodyStr, "Token has expired") ||
-		   strings.Contains(bodyStr, OctopusErrorCodeJWTExpired) || // Octopus specific auth error code
-		   strings.Contains(bodyStr, OctopusErrorCodeInvalidAuth) || // Invalid authorization header error
-		   strings.Contains(bodyStr, "Authentication failed") {
+		if isAuthExpiredResponse(bodyStr) {
 			c.debugLog("GraphQL response contains JWT expiration/auth error. Invalidating token and retrying...")
 			c.debugLog("Error details: %s", bodyStr)
 			c.invalidateJWTToken()
@@ -363,6 +363,39 @@ func (c *OctopusClient) makeGraphQLRequestWithEndpoint(endpoint, query string, v
 	}
 
 	return resp, nil
+}
+
+// isAuthExpiredResponse reports whether a GraphQL response body carries an expired or invalid token error
+func isAuthExpiredResponse(body string) bool {
+	return strings.Contains(body, "Signature of the JWT has expired") ||
+		strings.Contains(body, "JWT has expired") ||
+		strings.Contains(body, "Token has expired") ||
+		strings.Contains(body, "'Authorization' header has expired") || // backend-graphql
+		strings.Contains(body, OctopusErrorCodeJWTExpired) || // Octopus specific auth error code
+		strings.Contains(body, OctopusErrorCodeInvalidAuth) || // Invalid authorization header error
+		strings.Contains(body, "Authentication failed")
+}
+
+// jwtExpiry reads the exp claim from a JWT without verifying its signature
+func jwtExpiry(token string) (time.Time, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return time.Time{}, fmt.Errorf("malformed JWT")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to decode JWT payload: %w", err)
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse JWT claims: %w", err)
+	}
+	if claims.Exp == 0 {
+		return time.Time{}, fmt.Errorf("JWT has no exp claim")
+	}
+	return time.Unix(claims.Exp, 0), nil
 }
 
 func (c *OctopusClient) debugLog(format string, args ...interface{}) {
@@ -915,7 +948,13 @@ func (c *OctopusClient) refreshJWTToken() error {
 	}
 
 	c.jwtToken = tokenResult.Data.ObtainKrakenToken.Token
-	c.jwtExpiry = time.Now().Add(time.Duration(tokenResult.Data.ObtainKrakenToken.RefreshExpiresIn) * time.Second)
+	// refreshExpiresIn is the refresh token's lifetime, not the access token's
+	if exp, err := jwtExpiry(c.jwtToken); err == nil {
+		c.jwtExpiry = exp
+	} else {
+		c.debugLog("Could not read JWT expiry (%v), assuming %v", err, JWTDefaultLifetime)
+		c.jwtExpiry = time.Now().Add(JWTDefaultLifetime)
+	}
 
 	c.debugLog("JWT token obtained successfully, expires: %v", c.jwtExpiry)
 	

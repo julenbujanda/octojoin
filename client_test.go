@@ -15,6 +15,8 @@
 package main
 
 import (
+	"encoding/base64"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -187,5 +189,52 @@ func TestHappyHoursAvailable(t *testing.T) {
 		if got := resp.HappyHoursAvailable(); got != want {
 			t.Errorf("%d tokens: expected %d Happy Hours, got %d", tokens, want, got)
 		}
+	}
+}
+
+func makeTestJWT(t *testing.T, claims string) string {
+	t.Helper()
+	enc := base64.RawURLEncoding
+	return enc.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`)) + "." +
+		enc.EncodeToString([]byte(claims)) + "." + enc.EncodeToString([]byte("sig"))
+}
+
+func TestJWTExpiry(t *testing.T) {
+	exp := time.Now().Add(time.Hour).Truncate(time.Second)
+	got, err := jwtExpiry(makeTestJWT(t, fmt.Sprintf(`{"sub":"x","exp":%d}`, exp.Unix())))
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !got.Equal(exp) {
+		t.Errorf("Expected expiry %v, got %v", exp, got)
+	}
+
+	for _, token := range []string{"", "not-a-jwt", "a.!!!.c", makeTestJWT(t, `{"sub":"x"}`)} {
+		if _, err := jwtExpiry(token); err == nil {
+			t.Errorf("Expected error for token %q", token)
+		}
+	}
+}
+
+func TestSetStateUsesJWTExpiryClaim(t *testing.T) {
+	exp := time.Now().Add(-time.Minute).Truncate(time.Second)
+	client := NewOctopusClient("test", "test", false)
+	client.SetState(&AppState{
+		JWTToken:       makeTestJWT(t, fmt.Sprintf(`{"exp":%d}`, exp.Unix())),
+		JWTTokenExpiry: time.Now().Add(7 * 24 * time.Hour), // stale refresh-token expiry
+	})
+
+	if !client.jwtExpiry.Equal(exp) {
+		t.Errorf("Expected JWT expiry %v from token claim, got %v", exp, client.jwtExpiry)
+	}
+}
+
+func TestIsAuthExpiredResponse(t *testing.T) {
+	expired := `{"errors":[{"message":"'Authorization' header has expired.","extensions":{}}],"data":null}`
+	if !isAuthExpiredResponse(expired) {
+		t.Error("Expected expired Authorization header error to be detected")
+	}
+	if isAuthExpiredResponse(`{"data":{"savingSessions":{}}}`) {
+		t.Error("Expected successful response not to be treated as auth error")
 	}
 }

@@ -96,6 +96,9 @@ const (
 const (
 	// JWTRefreshBuffer - Refresh JWT tokens this many minutes before expiry
 	JWTRefreshBuffer = 5 * time.Minute
+
+	// JWTDefaultLifetime - Assumed JWT lifetime when the token's exp claim can't be read
+	JWTDefaultLifetime = 1 * time.Hour
 )
 
 // HTTP client settings
