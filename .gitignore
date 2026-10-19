@@ -10,6 +10,9 @@ config.*.yml
 *.config.yaml
 *.config.yml
 
+# Docker compose secrets (see .env.example)
+.env
+
 # Logs
 *.log
 

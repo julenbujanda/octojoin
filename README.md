@@ -44,10 +44,11 @@ cp config.example.yaml config.yaml
 ```bash
 git clone https://github.com/julenbujanda/octojoin.git
 cd octojoin
-# Edit the environment section of docker-compose.yaml with your credentials
+cp .env.example .env
+# Edit .env with your credentials
 docker compose up -d
 ```
-The container runs in daemon mode with the web dashboard on port 8080, and keeps its state in the `octojoin-data` volume. Every option can be set with an environment variable; `docker-compose.yaml` lists them all with example values:
+The container runs in daemon mode with the web dashboard on port 8080, and keeps its state in the `octojoin-data` volume. Secrets (your account ID, API key and ntfy settings) go in `.env`, which is git-ignored; the other options are in the `environment` section of `docker-compose.yaml`. Every option can be set with an environment variable, in either file:
 
 | Variable | Equivalent option |
 |----------|-------------------|

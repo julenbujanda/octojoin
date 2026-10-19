@@ -8,12 +8,8 @@ services:
       - "8080:8080" # web dashboard and /metrics
     volumes:
       - octojoin-data:/data # state and cache, kept across restarts
+    env_file: .env # secrets: account ID, API key and ntfy (copy .env.example to .env)
     environment:
-      # Required: your Octopus Energy account ID and API key
-      # (dashboard → Personal details → API access)
-      OCTOPUS_ACCOUNT_ID: "A-1234ABCD"
-      OCTOPUS_API_KEY: "sk_live_..."
-
       # Optional: only join saving sessions worth at least this many OctoPoints (0 = join all)
       OCTOJOIN_MIN_POINTS: "0"
 
@@ -21,11 +17,6 @@ services:
       OCTOJOIN_HAPPY_HOURS_PER_DAY: "1"          # slots to book per day, 0-2 (0 = notify only)
       OCTOJOIN_HAPPY_HOUR_TIMES: "11:00,12:00"   # preferred start times, UK time (leave empty for none)
       OCTOJOIN_HAPPY_HOUR_SLOT: "latest"         # "latest" or "earliest", when no preferred time has space
-
-      # Optional: ntfy push notifications (leave empty to disable)
-      # The URL must include the topic. Test with: docker compose run --rm octojoin -test-ntfy
-      NTFY_URL: "https://ntfy.sh/my-octojoin-topic"
-      NTFY_TOKEN: ""                             # only if the topic needs an access token
 
       # Optional: troubleshooting
       OCTOJOIN_DEBUG: "false"
